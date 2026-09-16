@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+uploads
+.git
+.github
+test
+*.md
+.env
+.env.*
+!.env.example
+src/generated
