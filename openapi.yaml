@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: TaskFlow API
+  description: REST and WebSocket API for the TaskFlow Android app. All paths are
+    relative to /api/v1.
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from /auth/login or /auth/register.
+  schemas: {}
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      tags:
+        - health
+      description: Reports process and database health. Public and never rate limited.
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - UP
+                  database:
+                    type: string
+                    enum:
+                      - UP
+                      - DOWN
+                  version:
+                    type: string
+                required:
+                  - status
+                  - database
+                  - version
+                additionalProperties: false
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: http://10.0.2.2:8080/api/v1
+    description: Android emulator host loopback
+tags:
+  - name: health
+    description: Liveness and readiness
+  - name: auth
+    description: Registration, login and token rotation
+  - name: users
+    description: Profile and avatar
+  - name: devices
+    description: FCM device registration
+  - name: workspaces
+    description: Workspaces, members and labels
+  - name: boards
+    description: Boards
+  - name: tasks
+    description: Tasks
+  - name: comments
+    description: Comments
+  - name: attachments
+    description: File attachments
+  - name: activity
+    description: Activity feed
+  - name: sync
+    description: Delta sync
