@@ -15,10 +15,15 @@ import { commentRoutes } from './features/comments/comment.routes.js';
 import { deviceRoutes } from './features/devices/device.routes.js';
 import { healthRoutes } from './features/health/health.routes.js';
 import { createNoopBroadcaster, type EventBroadcaster } from './features/realtime/events.js';
+import { registerRealtime } from './features/realtime/realtime.routes.js';
+import { createSessionRegistry } from './features/realtime/session-registry.js';
+import { syncRoutes } from './features/sync/sync.routes.js';
 import { taskRoutes } from './features/tasks/task.routes.js';
 import { userRoutes } from './features/users/user.routes.js';
 import { workspaceRoutes } from './features/workspaces/workspace.routes.js';
-import { createNoopPushSender, type PushSender } from './push/push-sender.js';
+import type { PushSender } from './push/push-sender.js';
+import { createPushSender } from './push/create-push-sender.js';
+import { createDueSoonJob } from './jobs/due-soon.js';
 import { registerUploads } from './plugins/uploads.js';
 import { createFileStorage } from './plugins/storage.js';
 import type { FileStorage } from './storage/file-storage.js';
@@ -62,8 +67,10 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   // opens one and closes it on shutdown.
   const database = deps.prisma ? undefined : createDatabase(env.DATABASE_URL);
   const prisma = deps.prisma ?? database!.prisma;
-  const events = deps.events ?? createNoopBroadcaster();
-  const push = deps.push ?? createNoopPushSender();
+  // The registry is both the broadcaster services call and the store the WebSocket
+  // route registers connections in, so live events need no wiring beyond this.
+  const registry = deps.events ? undefined : createSessionRegistry();
+  const events = deps.events ?? registry ?? createNoopBroadcaster();
   const storage = deps.storage ?? createFileStorage(env);
 
   const app = Fastify({
@@ -90,6 +97,17 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
     void reply.header('X-Request-Id', request.id);
   });
 
+  // Push needs the logger, so it is built once Fastify exists. A test-supplied sender
+  // wins; otherwise Firebase when credentials are set, and logged payloads when not.
+  const push = deps.push ?? createPushSender(env, prisma, app.log);
+
+  // The scheduler lives in this process (A9), so it belongs to the app's lifecycle.
+  // Tests pass their own push sender and get no scheduler, since a timer that outlives
+  // the test would keep the process alive.
+  const dueSoon = deps.push
+    ? undefined
+    : createDueSoonJob({ db: prisma, push, clock, logger: app.log });
+
   registerErrorHandler(app);
   await registerSecurity(app, env);
   await registerAuth(app, env);
@@ -100,6 +118,10 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
 
   await app.register(
     async (instance) => {
+      if (registry) {
+        await registerRealtime(instance, { registry });
+      }
+
       await instance.register(healthRoutes, { version });
       await instance.register(authRoutes, { accessTokens });
       await instance.register(userRoutes);
@@ -110,15 +132,15 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
       await instance.register(commentRoutes, { events, push });
       await instance.register(activityRoutes);
       await instance.register(attachmentRoutes, { storage });
+      await instance.register(syncRoutes);
     },
     { prefix: API_PREFIX },
   );
 
-  if (database) {
-    app.addHook('onClose', async () => {
-      await database.close();
-    });
-  }
+  app.addHook('onClose', async () => {
+    dueSoon?.stop();
+    await database?.close();
+  });
 
   return app;
 }

@@ -14,57 +14,21 @@ devices, streams changes to connected clients and sends push notifications.
 
 ## Quick start
 
-You need Node.js 20.19+ (Active LTS recommended) and a PostgreSQL 16 database. No paid
-accounts are required.
+You need Node.js and nothing else. No database to install, no Docker, no accounts.
 
 ```bash
-cp .env.example .env         # then set JWT_SECRET to 32+ random characters
-docker compose up -d         # PostgreSQL 16 on localhost:5432
+cp .env.example .env         # then set JWT_SECRET (see below)
 npm install
-npm run db:migrate           # applies migrations and generates the Prisma client
+npm run db:migrate           # creates the database under ./data
+npm run db:seed              # 3 users, 2 workspaces, sample tasks
 npm run dev                  # http://localhost:8080
 ```
 
-### Using Neon instead of local PostgreSQL
-
-The server talks to Neon over plain TCP, so nothing in the code changes — only
-`DATABASE_URL`. Skip `docker compose up -d` and do this instead:
-
-1. Create a free project at <https://neon.tech> and a database named `taskflow`.
-2. Copy the **direct** (unpooled) connection string. This is a long-running server that
-   keeps its own connection pool, so it wants the direct endpoint, not the pooled one.
-3. Create a second, empty database in the same project — call it `taskflow_shadow`.
-   `prisma migrate dev` needs a throwaway database to verify migrations against, and
-   managed providers do not always let it create one on the fly.
-4. Put both in `.env`:
-
-   ```bash
-   DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow?sslmode=require
-   SHADOW_DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow_shadow?sslmode=require
-   ```
-
-5. `npm run db:migrate && npm run dev`.
-
-`SHADOW_DATABASE_URL` is only read by the Prisma CLI, and only by `migrate dev`. Leave it
-unset for local PostgreSQL and in production, where `migrate deploy` does not need it.
-
-Neon free-tier projects suspend when idle, so the first request after a pause takes about
-half a second. That is expected and only affects development.
-
-### Running the tests without Docker Desktop
-
-The integration tests start their own PostgreSQL through Testcontainers, which needs a
-container runtime — Neon cannot stand in for it, because these tests create and drop
-schema on a throwaway database. Docker Desktop is not the only option:
+Generate a JWT secret with:
 
 ```bash
-brew install colima docker && colima start   # lightweight, free
-# or: brew install orbstack
-# or: brew install podman && podman machine init && podman machine start
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
-
-`npm run test:no-db` runs the suites that need no database at all, if you just want a
-quick check.
 
 Check it is alive:
 
@@ -73,21 +37,74 @@ curl http://localhost:8080/api/v1/health
 # {"status":"UP","database":"UP","version":"1.0.0"}
 ```
 
-API documentation (Swagger UI): <http://localhost:8080/docs>
+**Browse and try every endpoint at <http://localhost:8080/docs>** — Swagger UI, with a
+"Try it out" button on each one. Log in through `POST /auth/login` first, paste the
+`accessToken` into the green **Authorize** button, and the rest will work.
+
+### Seeded accounts
+
+Password for all three: `Password123`
+
+| Email                 | Role   | Can do                                         |
+| --------------------- | ------ | ---------------------------------------------- |
+| `owner@taskflow.dev`  | OWNER  | Everything, including deleting the workspace   |
+| `admin@taskflow.dev`  | ADMIN  | Boards, labels, members — but not role changes |
+| `member@taskflow.dev` | MEMBER | Tasks, comments, attachments                   |
 
 ### Connecting from the Android emulator
 
-The emulator reaches the host machine at `10.0.2.2`, not `localhost`:
+The emulator reaches your Mac at `10.0.2.2`, not `localhost`:
 
 ```
 http://10.0.2.2:8080/api/v1
 ```
 
-The server listens on `0.0.0.0:8080` by default, so no extra configuration is needed.
-Android blocks cleartext traffic by default — permit it for `10.0.2.2` in the debug
-network security config, or use the HTTPS staging URL.
+The server already listens on `0.0.0.0`, so nothing else is needed. Android blocks
+cleartext HTTP by default — for local development add a debug
+`network_security_config.xml` permitting `10.0.2.2`, or put the app in debug mode with
+`android:usesCleartextTraffic="true"`. Production must be HTTPS.
 
----
+The WebSocket is at `ws://10.0.2.2:8080/api/v1/ws/workspaces/{id}`, with the same
+`Authorization: Bearer` header as the REST calls.
+
+## Where the data lives
+
+`DATABASE_URL` picks the driver by its scheme, and nothing else changes:
+
+| `DATABASE_URL`             | What it is                                                              | Use it for                                     |
+| -------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
+| `pglite://./data/taskflow` | PostgreSQL compiled to WebAssembly, in this process, stored in `./data` | Local development — the default                |
+| `pglite://memory`          | The same, in RAM, discarded on exit                                     | Tests                                          |
+| `postgresql://…`           | A real PostgreSQL server                                                | Deployment, or to check against the real thing |
+
+PGlite is the same PostgreSQL engine, so the schema, the migrations and every query are
+identical to what a server runs. When you deploy, you swap the URL.
+
+### Moving to Neon for deployment
+
+Your phone cannot reach a server running on your laptop, so deploying means a hosted
+database. Neon's free tier is enough.
+
+1. In your Neon project, copy the **direct** (unpooled) connection string.
+2. Create a second, empty database — call it `taskflow_shadow`. `prisma migrate dev`
+   needs a throwaway database to verify new migrations against, and managed providers do
+   not always let it create one.
+3. Set both, then migrate:
+
+   ```bash
+   DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow?sslmode=require
+   SHADOW_DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow_shadow?sslmode=require
+   ```
+
+   ```bash
+   npm run db:migrate    # runs prisma migrate deploy against the server
+   ```
+
+Free Neon projects suspend when idle, so the first request after a pause takes about half
+a second.
+
+`docker-compose.yml` is also there if you would rather run PostgreSQL locally:
+`docker compose up -d`, then point `DATABASE_URL` at `localhost:5432`.
 
 ## npm scripts
 
@@ -187,34 +204,34 @@ code, because both come from the same Zod schemas.
 
 ## Testing
 
-Requires a container runtime — see [Running the tests without Docker Desktop](#running-the-tests-without-docker-desktop).
+```bash
+npm test              # everything
+npm run test:coverage # with a coverage report
+```
 
-| Level       | Tool                                         | Covers                                                      |
-| ----------- | -------------------------------------------- | ----------------------------------------------------------- |
-| Unit        | Vitest                                       | Services, validation, position math, cursors, date handling |
-| Integration | Vitest + `app.inject()` + Testcontainers     | Every endpoint: success, 400, 401, 403/404, 409             |
-| Migration   | `prisma migrate deploy` on a fresh container | All migrations apply cleanly from zero                      |
+Every test file gets its own in-memory PostgreSQL with all migrations applied, so the
+suite needs nothing installed, files cannot interfere with each other, and the whole thing
+runs in seconds.
 
-`npm test` starts one PostgreSQL 16 container for the whole run and applies every
-migration from zero before any test executes, so the migration path is exercised on every
-run. Without Docker, use `npm run test:no-db` for the subset that does not need a
-database.
-
----
+| Level       | Covers                                                                   |
+| ----------- | ------------------------------------------------------------------------ |
+| Unit        | Position maths, cursors, date handling, environment validation           |
+| Integration | Every endpoint: success, 400, 401, 403/404, 409, against a real database |
+| Permissions | Every row of the role matrix, allowed and denied                         |
+| WebSocket   | A real socket on a real port: events after REST writes, and close codes  |
+| Migration   | All migrations apply cleanly from zero                                   |
 
 ## Version pins
 
-Dependencies are pinned exactly (no `^`) so every machine and CI run resolves the same
-tree. Three pins are deliberately not the newest published version:
+Dependencies are pinned exactly (no `^`) so every machine resolves the same tree. Two pins
+are deliberately not the newest published version:
 
-| Package                      | Pinned | Why not latest                                                                                    |
-| ---------------------------- | ------ | ------------------------------------------------------------------------------------------------- |
-| `typescript`                 | 5.9.3  | `typescript-eslint` declares `typescript <6.1.0`; TypeScript 7 is not supported by the linter yet |
-| `vitest`                     | 4.1.11 | Vitest 5 requires Node >= 22.12; Vitest 4 runs on Node 20 as well                                 |
-| `@testcontainers/postgresql` | 11.7.1 | Version 12 depends on `undici` 8, which needs Node >= 22                                          |
+| Package      | Pinned | Why not latest                                                                                    |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| `typescript` | 5.9.3  | `typescript-eslint` declares `typescript <6.1.0`; TypeScript 7 is not supported by the linter yet |
+| `vitest`     | 4.1.11 | Vitest 5 requires Node >= 22.12; Vitest 4 also runs on Node 20                                    |
 
-All three can move up once the project standardises on Node 22+; nothing else in the
-stack blocks it.
+Both can move up once the project standardises on Node 22 or newer.
 
 ## Hand-written migrations
 
@@ -243,14 +260,20 @@ uptime checks and is exempt from rate limiting.
 
 ## Implementation status
 
-Built phase by phase (PRD §A7). Current phase: **0 — Foundation**.
+All 42 REST endpoints and the WebSocket from the specification are implemented and tested.
 
-- [x] **Phase 0** — Foundation: app factory, env validation, logging, error handling, security plugins, OpenAPI, Prisma schema and first migration, health check, Docker, CI
-- [ ] **Phase 1** — Auth and users
-- [ ] **Phase 2** — Workspaces and permissions
-- [ ] **Phase 3** — Boards and tasks
-- [ ] **Phase 4** — Comments, attachments, activity
-- [ ] **Phase 5** — Sync
-- [ ] **Phase 6** — Real-time
-- [ ] **Phase 7** — Push notifications
-- [ ] **Phase 8** — Hardening and handoff
+- [x] Auth: register, login, refresh with rotation and theft detection, logout
+- [x] Profile, avatar upload, device registration for push
+- [x] Workspaces, members, roles, labels, and the full permission matrix
+- [x] Boards: create, rename, reorder, archive, soft delete with their tasks
+- [x] Tasks: CRUD, filters, sorting, pagination, fractional positions, optimistic locking, idempotent creates
+- [x] Comments with cursor pagination, attachments with byte-level type checks, activity feed
+- [x] Delta sync with an overlap window, soft-deleted rows and paging
+- [x] WebSocket events after every write, with the documented close codes
+- [x] Push notifications with an FCM sender and a logging fallback, plus the daily due-soon job
+- [x] Rate limits, request ids, structured logs with redaction, graceful shutdown
+
+### Not built (out of scope for v1, per the specification)
+
+Email verification, password reset by email, OAuth, a web client, billing, full-text
+search, running more than one server instance, and uploading files while offline.

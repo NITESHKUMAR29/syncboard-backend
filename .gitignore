@@ -2,6 +2,9 @@ node_modules/
 dist/
 coverage/
 uploads/
+# Local PGlite database files.
+data/
+.tmp-seed-db/
 .env
 .env.local
 .env.*.local

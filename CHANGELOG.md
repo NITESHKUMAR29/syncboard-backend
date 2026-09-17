@@ -8,12 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added — Phase 0 (Foundation)
+### Added
 
-- `GET /api/v1/health` — liveness check returning `status`, `database` and `version`.
-  Public and exempt from rate limiting.
-- Standard error body on every failure (`error.code`, `error.message`, optional
-  `error.fields`, `error.requestId`) and `X-Request-Id` on every response.
-- `openapi.yaml`, generated from the same Zod schemas that validate requests, plus
-  Swagger UI at `/docs`.
-- Database schema and first migration for all tables in PRD Part B §3.
+All 42 REST endpoints and the WebSocket from the specification, matching `openapi.yaml`.
+
+- **Auth** — register, login, refresh with rotation and theft detection, logout. Access
+  tokens are 15-minute JWTs; refresh tokens are 30-day random values stored only as
+  SHA-256 hashes.
+- **Users and devices** — profile, name update, avatar upload, FCM token registration.
+- **Workspaces** — create, list, rename, delete, members with OWNER/ADMIN/MEMBER roles,
+  and labels with case-insensitive per-workspace uniqueness.
+- **Boards and tasks** — full CRUD, filters, sorting, offset pagination, fractional
+  positions with automatic renumbering, optimistic locking returning 409 with the server
+  copy in `current`, and idempotent creates from a client-supplied id.
+- **Comments, attachments and activity** — cursor-paginated comments and feed, uploads
+  typed from their leading bytes, and one activity row per write.
+- **Delta sync** — `GET /workspaces/{id}/sync` with a five-second overlap window,
+  soft-deleted rows, and 500-row paging with `hasMore`.
+- **WebSocket** — `ws/workspaces/{id}` broadcasting every write, with close codes 4401,
+  4403 and 4404.
+- **Push** — FCM data messages for assignment, comments, mentions, workspace invites and
+  a daily due-soon sweep. Falls back to logging the payload when no credentials are set.
+- **Conventions** — one error body everywhere, `X-Request-Id` on every response, rate
+  limits, structured logs with credential redaction, and graceful shutdown.

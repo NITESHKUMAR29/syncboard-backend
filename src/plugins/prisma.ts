@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,7 +70,15 @@ function createServerDatabase(connectionString: string): DatabaseHandle {
 }
 
 function createEmbeddedDatabase(url: string): DatabaseHandle {
-  const pglite = new PGlite(toDataDir(url));
+  const dataDir = toDataDir(url);
+
+  // PGlite creates its data directory non-recursively, so a nested path like
+  // ./data/taskflow fails unless the parent already exists.
+  if (dataDir) {
+    mkdirSync(dirname(resolve(dataDir)), { recursive: true });
+  }
+
+  const pglite = new PGlite(dataDir);
   const prisma = new PrismaClient({ adapter: new PrismaPGlite(pglite) });
 
   return {
