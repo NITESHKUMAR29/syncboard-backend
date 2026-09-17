@@ -37,8 +37,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Integration tests start their own PostgreSQL through Testcontainers, which uses
-      # the Docker daemon preinstalled on the runner.
+      # Integration tests run PostgreSQL in-process, so the runner needs no services.
       - name: Test
         run: npm run test:coverage
 

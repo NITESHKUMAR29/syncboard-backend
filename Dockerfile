@@ -39,5 +39,7 @@ COPY prisma ./prisma
 USER node
 EXPOSE 8080
 
-# Migrations run before the server starts (Part B §8).
+# Migrations run before the server starts (Part B §8). A deployed container talks to a
+# real PostgreSQL server, so the Prisma CLI applies them; the embedded PGlite driver is a
+# development convenience and migrates itself through `npm run db:migrate`.
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
