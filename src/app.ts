@@ -31,6 +31,7 @@ import { createAccessTokenIssuer, registerAuth } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { createDatabase, type Database } from './plugins/prisma.js';
 import { registerSecurity } from './plugins/security.js';
+import { registerStaticFiles } from './plugins/static-files.js';
 import { registerSwagger } from './plugins/swagger.js';
 
 export const API_PREFIX = '/api/v1';
@@ -112,6 +113,8 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   await registerSecurity(app, env);
   await registerAuth(app, env);
   await registerUploads(app);
+  // Outside the /api/v1 prefix: stored URLs are /files/{key}.
+  await registerStaticFiles(app, env);
   await registerSwagger(app, env);
 
   const accessTokens = createAccessTokenIssuer(app, env);

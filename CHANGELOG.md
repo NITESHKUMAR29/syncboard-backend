@@ -29,5 +29,8 @@ All 42 REST endpoints and the WebSocket from the specification, matching `openap
   4403 and 4404.
 - **Push** — FCM data messages for assignment, comments, mentions, workspace invites and
   a daily due-soon sweep. Falls back to logging the payload when no credentials are set.
+- **File serving** — locally stored uploads are served at `/files/{key}`, so the URLs
+  returned by avatar and attachment uploads resolve. Skipped when `STORAGE_BUCKET` is set,
+  since a bucket serves its own URLs.
 - **Conventions** — one error body everywhere, `X-Request-Id` on every response, rate
   limits, structured logs with credential redaction, and graceful shutdown.
