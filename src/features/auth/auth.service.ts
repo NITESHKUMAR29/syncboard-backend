@@ -12,15 +12,15 @@ import type { LoginBody, RegisterBody, TokenPairDto } from './auth.schemas.js';
 import { generateRefreshToken, hashRefreshToken } from './auth.tokens.js';
 import type { User } from '../../generated/prisma/client.js';
 
-/** FR-AUTH-6: BCrypt cost 12. */
-const BCRYPT_COST = 12;
-
 /**
- * A precomputed hash of a value nobody can log in with. When the email is unknown we
- * still run a bcrypt comparison against this, so a wrong email and a wrong password take
- * the same time and an attacker cannot enumerate accounts by timing (FR-AUTH-2).
+ * A hash of a value nobody can log in with. When the email is unknown we still run a
+ * bcrypt comparison against this, so a wrong email and a wrong password take the same
+ * time and an attacker cannot enumerate accounts by timing (FR-AUTH-2). It is computed
+ * at the configured cost so the timing actually matches.
  */
-const DUMMY_HASH = bcrypt.hashSync('taskflow-timing-equalizer', BCRYPT_COST);
+function dummyHashFor(cost: number): string {
+  return bcrypt.hashSync('taskflow-timing-equalizer', cost);
+}
 
 export interface AccessTokenIssuer {
   /** Signs the access token and reports when it expires. */
@@ -39,6 +39,8 @@ export interface AuthServiceDeps {
   clock: Clock;
   accessTokens: AccessTokenIssuer;
   refreshTokenTtlDays: number;
+  /** FR-AUTH-6: 12 in production. */
+  bcryptCost: number;
 }
 
 export function createAuthService({
@@ -46,7 +48,10 @@ export function createAuthService({
   clock,
   accessTokens,
   refreshTokenTtlDays,
+  bcryptCost,
 }: AuthServiceDeps): AuthService {
+  const dummyHash = dummyHashFor(bcryptCost);
+
   /** Issues a fresh access token plus a brand new refresh token. */
   async function issueTokenPair(user: User): Promise<TokenPairDto> {
     const now = clock.now();
@@ -73,7 +78,7 @@ export function createAuthService({
       }
 
       const now = clock.now();
-      const passwordHash = await bcrypt.hash(body.password, BCRYPT_COST);
+      const passwordHash = await bcrypt.hash(body.password, bcryptCost);
 
       const user = await repository.createUser({
         id: randomUUID(),
@@ -90,7 +95,7 @@ export function createAuthService({
       const user = await repository.findUserByEmail(body.email);
 
       // Always compare, even with no user, to keep the timing identical.
-      const matches = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_HASH);
+      const matches = await bcrypt.compare(body.password, user?.passwordHash ?? dummyHash);
 
       if (!user || !matches) {
         // The same error either way: never reveal which half was wrong.

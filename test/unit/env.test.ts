@@ -14,6 +14,8 @@ describe('loadEnv', () => {
     expect(env.PORT).toBe(8080);
     expect(env.ACCESS_TOKEN_TTL_MINUTES).toBe(15);
     expect(env.REFRESH_TOKEN_TTL_DAYS).toBe(30);
+    // FR-AUTH-6: production must hash at cost 12 unless deliberately overridden.
+    expect(env.BCRYPT_COST).toBe(12);
   });
 
   it('coerces numeric variables from their string form', () => {

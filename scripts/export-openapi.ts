@@ -24,6 +24,7 @@ const exportEnv: Env = {
   JWT_AUDIENCE: 'taskflow-android',
   ACCESS_TOKEN_TTL_MINUTES: 15,
   REFRESH_TOKEN_TTL_DAYS: 30,
+  BCRYPT_COST: 12,
   STORAGE_LOCAL_DIR: './uploads',
   PUBLIC_BASE_URL: 'http://localhost:8080',
   CORS_ALLOWED_ORIGINS: '',

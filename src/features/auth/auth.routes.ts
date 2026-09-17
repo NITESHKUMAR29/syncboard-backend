@@ -26,6 +26,7 @@ export const authRoutes: FastifyPluginAsyncZod<AuthRoutesOptions> = async (app, 
     clock: app.clock,
     accessTokens: options.accessTokens,
     refreshTokenTtlDays: app.env.REFRESH_TOKEN_TTL_DAYS,
+    bcryptCost: app.env.BCRYPT_COST,
   });
 
   const authRateLimit = {

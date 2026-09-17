@@ -10,7 +10,10 @@ import { loadEnv, type Env } from './config/env.js';
 import { authRoutes } from './features/auth/auth.routes.js';
 import { deviceRoutes } from './features/devices/device.routes.js';
 import { healthRoutes } from './features/health/health.routes.js';
+import { createNoopBroadcaster, type EventBroadcaster } from './features/realtime/events.js';
 import { userRoutes } from './features/users/user.routes.js';
+import { workspaceRoutes } from './features/workspaces/workspace.routes.js';
+import { createNoopPushSender, type PushSender } from './push/push-sender.js';
 import { createAccessTokenIssuer, registerAuth } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { createDatabase, type Database } from './plugins/prisma.js';
@@ -31,6 +34,10 @@ export interface AppDeps {
   clock?: Clock;
   prisma?: Database;
   version?: string;
+  /** Swapped for a fake in tests that assert on emitted events. */
+  events?: EventBroadcaster;
+  /** Swapped for a fake in tests that assert on notifications. */
+  push?: PushSender;
 }
 
 /**
@@ -45,6 +52,8 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   // opens one and closes it on shutdown.
   const database = deps.prisma ? undefined : createDatabase(env.DATABASE_URL);
   const prisma = deps.prisma ?? database!.prisma;
+  const events = deps.events ?? createNoopBroadcaster();
+  const push = deps.push ?? createNoopPushSender();
 
   const app = Fastify({
     logger: buildLoggerOptions(env),
@@ -83,6 +92,7 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
       await instance.register(authRoutes, { accessTokens });
       await instance.register(userRoutes);
       await instance.register(deviceRoutes);
+      await instance.register(workspaceRoutes, { events, push });
     },
     { prefix: API_PREFIX },
   );

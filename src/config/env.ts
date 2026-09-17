@@ -25,6 +25,9 @@ const envSchema = z.object({
   JWT_AUDIENCE: z.string().min(1).default('taskflow-android'),
   ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // FR-AUTH-6 mandates cost 12. Only the test suite lowers it, where hashing hundreds of
+  // throwaway passwords at cost 12 would dominate the run time.
+  BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
   // File storage: empty STORAGE_BUCKET means local disk (A9).
   STORAGE_BUCKET: z.string().optional(),
