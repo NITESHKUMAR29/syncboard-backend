@@ -19,7 +19,10 @@ services:
     # deploy instead of crash-looping a running service, and it keeps migrations out of
     # the start command: a free instance sleeps and restarts often, and paying for a
     # migration check on every wake would slow an already slow cold start.
-    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    # --include=dev is required, not decorative: NODE_ENV=production below tells npm to
+    # skip devDependencies, but the build needs them — TypeScript, the type packages and
+    # the Prisma CLI all live there. Without it the compile fails on a missing @types/ws.
+    buildCommand: npm ci --include=dev && npm run build && npx prisma migrate deploy
     startCommand: npm start
 
     # Render restarts the service if this stops returning 200.
