@@ -202,6 +202,26 @@ code, because both come from the same Zod schemas.
 
 ---
 
+## Trying the API by hand
+
+Two ways, both with the server running (`npm run dev`):
+
+**Swagger UI** at <http://localhost:8080/docs> — every endpoint with a "Try it out"
+button. Send `POST /auth/login` first, copy the `accessToken`, paste it into the green
+**Authorize** button, and the rest will work.
+
+**Postman** — import `postman/TaskFlow.postman_collection.json` (Import → File). Open
+**1. Auth → Log in (seeded OWNER)** and send it; the token is captured automatically and
+applied to every other request. Ids flow the same way, so creating a workspace fills in
+`{{workspaceId}}` for the requests that need it, and you can mostly work top to bottom.
+
+The collection also demonstrates the behaviours worth understanding before wiring up the
+app: an idempotent offline create, a 409 version conflict carrying the server's copy, and
+what a MEMBER is refused.
+
+To point it at the Android emulator, edit the `baseUrl` collection variable to
+`http://10.0.2.2:8080/api/v1`.
+
 ## Testing
 
 ```bash

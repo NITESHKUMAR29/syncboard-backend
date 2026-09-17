@@ -1,0 +1,2024 @@
+{
+  "info": {
+    "_postman_id": "ee21690c-b9db-4c0a-a8c6-9fdda7dff046",
+    "name": "TaskFlow API",
+    "description": "REST API for the TaskFlow Android app.\n\n## Getting started\n\n1. Start the server: `npm run dev`\n2. Open folder **1. Auth** and send **Log in (seeded OWNER)**\n3. Everything else now works \u2014 the token is saved and applied automatically\n\nIds flow between requests the same way: creating a workspace saves its id, listing boards saves the first board's id, and so on. So you can mostly work top to bottom.\n\n## If requests start failing with 401\n\nAccess tokens last 15 minutes. Send **Log in** again.\n\n## Switching to the emulator or a deployed server\n\nEdit the `baseUrl` collection variable:\n\n- `http://localhost:8080/api/v1` \u2014 from your machine\n- `http://10.0.2.2:8080/api/v1` \u2014 from the Android emulator\n\n## Error shape\n\nEvery failure returns the same body, and your app should switch on `error.code`, never on the message:\n\n```json\n{ \"error\": { \"code\": \"VALIDATION_FAILED\", \"message\": \"...\", \"fields\": { \"title\": \"LENGTH_INVALID\" }, \"requestId\": \"...\" } }\n```\n\n`requestId` also appears in the server log, so you can match a failed call to the line explaining why.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Give the offline-create example a stable id, so sending it twice",
+          "// demonstrates idempotency rather than creating two different tasks.",
+          "if (!pm.collectionVariables.get(\"offlineTaskId\")) {",
+          "  pm.collectionVariables.set(",
+          "    \"offlineTaskId\",",
+          "    pm.variables.replaceIn('{{$randomUUID}}'),",
+          "  );",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string",
+      "description": "Use http://10.0.2.2:8080/api/v1 from the Android emulator"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string",
+      "description": "Set by Log in"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "memberAccessToken",
+      "value": "",
+      "type": "string",
+      "description": "Set by Log in (seeded MEMBER)"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "memberUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workspaceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "boardId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "boardVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "taskId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "taskVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "commentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "commentVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "labelId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "attachmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deviceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "offlineTaskId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "syncSince",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Public and never rate limited. `database: UP` means the server can reach its database.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"database is UP\", () => pm.expect(pm.response.json().database).to.eql(\"UP\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Auth",
+      "description": "Start here. **Log in** saves the token for every other request.",
+      "item": [
+        {
+          "name": "Register a new account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Creates an account and returns a token pair.\n\nThe email carries a timestamp so this request stays re-runnable; send it twice with a fixed address instead and the second returns 409 EMAIL_ALREADY_EXISTS.\n\nThe token is saved automatically, so you are logged in as this new user afterwards. Run **Log in (seeded OWNER)** to switch back.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ali Khan\",\n  \"email\": \"ali+{{$timestamp}}@example.com\",\n  \"password\": \"StrongPass123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+                  "pm.collectionVariables.set(\"refreshToken\", body.refreshToken);",
+                  "pm.collectionVariables.set(\"userId\", body.user.id);",
+                  "console.log(\"Logged in as\", body.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in (seeded OWNER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "**Run this first.** Logs in as the seeded OWNER and saves the token, so every other request in this collection is authenticated.\n\nTokens last 15 minutes. When you start seeing 401 TOKEN_EXPIRED, run this again.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@taskflow.dev\",\n  \"password\": \"Password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+                  "pm.collectionVariables.set(\"refreshToken\", body.refreshToken);",
+                  "pm.collectionVariables.set(\"userId\", body.user.id);",
+                  "console.log(\"Logged in as\", body.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in (seeded MEMBER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Saves a second token under `memberAccessToken`, used by the permission examples in folder 9 to show what a MEMBER cannot do.\n\nThis does NOT replace your main token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"member@taskflow.dev\",\n  \"password\": \"Password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"memberAccessToken\", body.accessToken);",
+                  "pm.collectionVariables.set(\"memberUserId\", body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong password (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "A wrong password and an unknown email return exactly the same 401 INVALID_CREDENTIALS, in the same time, so accounts cannot be discovered by guessing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@taskflow.dev\",\n  \"password\": \"WrongPassword1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"code is INVALID_CREDENTIALS\", () => pm.expect(pm.response.json().error.code).to.eql(\"INVALID_CREDENTIALS\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh the token pair",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Exchanges the refresh token for a new pair and revokes the old one.\n\nRunning this twice with the same token is treated as theft: it returns 401 and kills every session for that user.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+                  "pm.collectionVariables.set(\"refreshToken\", body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Revokes the refresh token. Returns 204 even if it was already revoked, so logging out twice is not an error.\n\nRun **Log in** again afterwards.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. My profile and devices",
+      "item": [
+        {
+          "name": "Get my profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "The current user, from the access token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my name",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Only the name can be changed here. 1\u2013100 characters.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ali K.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload my avatar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/avatar",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "avatar"]
+            },
+            "description": "**Click the `file` row and choose an image from your machine before sending.**\n\nImages only, max 2 MB. The type is read from the file's own bytes, so renaming a .txt to .png will not get past it.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": null,
+                  "description": "Pick a JPEG, PNG or WebP under 2 MB"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register this device for push",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["devices"]
+            },
+            "description": "Your Android app calls this with its real FCM token after login.\n\nUpserting by token means re-registering the same device does not create duplicates.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fcmToken\": \"fake-fcm-token-for-testing-{{$randomUUID}}\",\n  \"platform\": \"ANDROID\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"deviceId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unregister the device",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/devices/{{deviceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["devices", "{{deviceId}}"]
+            },
+            "description": "Called on logout. Only works for your own devices; someone else's returns 404."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Workspaces",
+      "item": [
+        {
+          "name": "List my workspaces",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces?page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "1-based"
+                },
+                {
+                  "key": "size",
+                  "value": "20",
+                  "description": "max 100"
+                }
+              ]
+            },
+            "description": "Only workspaces you belong to, most recently active first.\n\nSaves the first workspace id, so the rest of the collection has something to work with."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.items.length) {",
+                  "  pm.collectionVariables.set(\"workspaceId\", body.items[0].id);",
+                  "  console.log(\"Using workspace\", body.items[0].name);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a workspace",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces"]
+            },
+            "description": "You become its OWNER in the same transaction, so the response already shows `myRole: OWNER` and `memberCount: 1`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile Team\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"workspaceId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get workspace detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}"]
+            },
+            "description": "Includes `myRole`, which is what your app should use to decide which buttons to show.\n\nA workspace you do not belong to returns **404, not 403**, so ids cannot be probed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename the workspace",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}"]
+            },
+            "description": "Needs ADMIN or OWNER.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile Squad\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the workspace",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}"]
+            },
+            "description": "\u26a0\ufe0f OWNER only, and permanent: boards, tasks, comments and attachments all go with it. Connected WebSocket clients are disconnected with code 4404.\n\nRun **Create a workspace** afterwards if you want to keep going."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Members and roles",
+      "item": [
+        {
+          "name": "List members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "members"]
+            },
+            "description": "Everyone in the workspace, with their role and join date."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a member by email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "members"]
+            },
+            "description": "The account must already exist \u2014 there are no invite emails in v1. An unknown email returns 404, someone already in returns 409 ALREADY_MEMBER.\n\nSends them a WORKSPACE_INVITE push.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"member@taskflow.dev\",\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 created, or 409 if already a member\", () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change a member's role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members/{{memberUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "members", "{{memberUserId}}"]
+            },
+            "description": "OWNER only. Send `ADMIN` or `OWNER` instead to promote them.\n\nThis example sets the role to MEMBER so the permission demos in folder 10 still show what a MEMBER cannot do. If you promote someone here, set them back before running those.\n\nDemoting the last OWNER returns 409 LAST_OWNER \u2014 a workspace must always keep one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"MEMBER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove a member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members/{{memberUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "members", "{{memberUserId}}"]
+            },
+            "description": "ADMIN can remove MEMBERs and other ADMINs; only an OWNER can remove an OWNER. The removed person's WebSocket closes with 4403."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Leave the workspace",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "members", "me"]
+            },
+            "description": "`me` means yourself. The last OWNER cannot leave \u2014 409 LAST_OWNER."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204, or 409 if you are the last OWNER\", () => pm.expect([204, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Labels",
+      "item": [
+        {
+          "name": "List labels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/labels",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "labels"]
+            },
+            "description": "All labels in the workspace."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a label",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/labels",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "labels"]
+            },
+            "description": "ADMIN only. `colorHex` must be `#RRGGBB`.\n\nNames are unique per workspace, compared case-insensitively: adding 'bug' when 'Bug' exists returns 400.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bug\",\n  \"colorHex\": \"#E5484D\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 created, or 400 if the name is taken\", () => pm.expect([201, 400]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) { pm.collectionVariables.set(\"labelId\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a label",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/labels/{{labelId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["labels", "{{labelId}}"]
+            },
+            "description": "ADMIN only. Removing a label also removes it from every task that had it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Boards",
+      "item": [
+        {
+          "name": "List boards",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/boards?includeArchived=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "boards"],
+              "query": [
+                {
+                  "key": "includeArchived",
+                  "value": "false",
+                  "description": "true to include archived boards"
+                }
+              ]
+            },
+            "description": "Ordered by `position`. Archived boards are hidden unless you ask for them.\n\nSaves the first board id for the task requests."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.length) {",
+                  "  pm.collectionVariables.set(\"boardId\", body[0].id);",
+                  "  pm.collectionVariables.set(\"boardVersion\", body[0].version);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a board",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "boards"]
+            },
+            "description": "ADMIN only. New boards are appended: the first gets position 1000, the next 2000, and so on.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Sprint 12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"boardId\", body.id);",
+                  "pm.collectionVariables.set(\"boardVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get board detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            },
+            "description": "Includes `taskCount`, which excludes deleted tasks."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"boardVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename / reorder / archive a board",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            },
+            "description": "Send the `version` you last saw. If someone else changed the board first, you get **409 VERSION_CONFLICT** with their copy in `current` \u2014 re-apply your change on top of that version and retry.\n\n`{{boardVersion}}` is filled in from the previous request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{boardVersion}},\n  \"title\": \"Sprint 13\",\n  \"archived\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"boardVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a board",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            },
+            "description": "ADMIN only. Soft delete: the board and every task on it get a `deletedAt`, so offline clients learn about it through /sync rather than silently keeping stale rows."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Tasks",
+      "item": [
+        {
+          "name": "List tasks on a board",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/tasks?sort=position&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "TODO | IN_PROGRESS | IN_REVIEW | DONE",
+                  "disabled": true
+                },
+                {
+                  "key": "assigneeId",
+                  "value": "",
+                  "description": "a user id, or `me`",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "",
+                  "description": "LOW | MEDIUM | HIGH | URGENT",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "position",
+                  "description": "position | dueDate | -updatedAt | priority"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": ""
+                },
+                {
+                  "key": "size",
+                  "value": "20",
+                  "description": "max 100"
+                }
+              ]
+            },
+            "description": "Leave a filter blank to ignore it.\n\n`sort=priority` orders URGENT \u2192 LOW, not alphabetically."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.items.length) {",
+                  "  pm.collectionVariables.set(\"taskId\", body.items[0].id);",
+                  "  pm.collectionVariables.set(\"taskVersion\", body.items[0].version);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "tasks"]
+            },
+            "description": "Only `title` is required. Defaults: status TODO, priority MEDIUM, appended to the end of the board.\n\n`dueDate` is a calendar date: `2026-09-30`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implement login screen\",\n  \"description\": null,\n  \"status\": \"TODO\",\n  \"priority\": \"MEDIUM\",\n  \"assigneeId\": null,\n  \"dueDate\": null,\n  \"labelIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"taskId\", body.id);",
+                  "pm.collectionVariables.set(\"taskVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create with a client id (offline create)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "tasks"]
+            },
+            "description": "This is how your offline outbox should create tasks: generate the UUID on the device and send it.\n\n**Send this twice.** The first returns 201, the second returns **200 with the same task** and creates nothing \u2014 so a retry after a dropped connection is safe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{offlineTaskId}}\",\n  \"title\": \"Created while offline\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 first time, 200 on retry\", () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "console.log(pm.response.code === 201 ? \"Created\" : \"Already existed \u2014 no duplicate\");",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"taskId\", body.id);",
+                  "pm.collectionVariables.set(\"taskVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get task detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}"]
+            },
+            "description": "Includes labels, comment count and attachment count."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"taskVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update a task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}"]
+            },
+            "description": "Send only what changed, plus the `version`.\n\n**Absent vs null matters:** leaving a field out means 'unchanged'; sending it as `null` clears it. To unassign, send `\"assigneeId\": null`.\n\nA stale version returns 409 with the server's copy in `current`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{taskVersion}},\n  \"status\": \"IN_PROGRESS\",\n  \"priority\": \"HIGH\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"taskVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conflict: update with a stale version (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}"]
+            },
+            "description": "Deliberately sends version 1 after the task has moved on \u2014 this is what your app sees when two devices edit the same task.\n\nThe response body has `error.code: VERSION_CONFLICT` **and** a top-level `current` holding the server's copy. Show the user a choice, or re-apply the edit on top of `current.version`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1,\n  \"priority\": \"URGENT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 conflict\", () => pm.response.to.have.status(409));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"carries the server copy\", () => pm.expect(body.current).to.be.an(\"object\"));",
+                  "console.log(\"Server version is\", body.current.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move a task to another board",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}"]
+            },
+            "description": "Moving between boards is allowed inside the same workspace only.\n\n`position` is a double: to drop a card between two others, send the midpoint of their positions. The server renumbers the board when cards get too close to split further.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{taskVersion}},\n  \"boardId\": \"{{boardId}}\",\n  \"position\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"taskVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tasks assigned to me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/me/tasks?page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["me", "tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "optional filter",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": ""
+                },
+                {
+                  "key": "size",
+                  "value": "20",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Across every workspace you still belong to \u2014 leaving a workspace removes its tasks from this list."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}"]
+            },
+            "description": "The task's creator, or an ADMIN. No `version` needed: a delete always wins.\n\nSoft delete, so /sync can tell offline clients to remove it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Comments, files and activity",
+      "item": [
+        {
+          "name": "List comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}", "comments"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "max 100"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "from the previous page's nextCursor",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Oldest first, cursor paginated. `nextCursor` is null on the last page \u2014 treat the cursor as opaque and never parse it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.items.length) {",
+                  "  pm.collectionVariables.set(\"commentId\", body.items[0].id);",
+                  "  pm.collectionVariables.set(\"commentVersion\", body.items[0].version);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}", "comments"]
+            },
+            "description": "1\u20135,000 characters. Notifies the task's assignee and creator.\n\n**Mentions:** write `@NameWithoutSpaces` (for example `@MiaMember`) to notify that person instead. Unmatched mentions are ignored.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Pushed the first draft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"commentId\", body.id);",
+                  "pm.collectionVariables.set(\"commentVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit my comment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["comments", "{{commentId}}"]
+            },
+            "description": "The author only \u2014 not even an ADMIN can edit someone else's words. `edited` flips to true once the version passes 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{commentVersion}},\n  \"body\": \"Pushed the first draft (updated)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"commentVersion\", body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a comment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["comments", "{{commentId}}"]
+            },
+            "description": "The author, or an ADMIN."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List attachments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}", "attachments"]
+            },
+            "description": "Files on this task."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload an attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks", "{{taskId}}", "attachments"]
+            },
+            "description": "**Click the `file` row and choose a file before sending.**\n\nJPEG, PNG, WebP and PDF only, max 10 MB. The type is detected from the file's leading bytes, so a mislabelled file is rejected.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": null,
+                  "description": "Pick a JPEG, PNG, WebP or PDF under 10 MB"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"attachmentId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete an attachment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/attachments/{{attachmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["attachments", "{{attachmentId}}"]
+            },
+            "description": "The uploader, or an ADMIN. Removes the stored file too."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 204\", () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activity feed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/activity?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "activity"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "max 100"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "from the previous page's nextCursor",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Newest first, cursor paginated. Each entry's `summary` was written when it happened, so renaming a task later does not rewrite its history."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"status 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Sync (offline support)",
+      "item": [
+        {
+          "name": "Full sync (first time)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "sync"]
+            },
+            "description": "Leave `since` off for a complete first sync.\n\n**Save `serverTime` from the response** and send it as `since` next time. Use the server's clock, never the device's \u2014 phone clocks drift."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"syncSince\", body.serverTime);",
+                  "console.log(\"boards\", body.boards.length, \"tasks\", body.tasks.length, \"hasMore\", body.hasMore);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delta sync (changes since last time)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/sync?since={{syncSince}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "sync"],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "{{syncSince}}",
+                  "description": "serverTime from your last sync"
+                }
+              ]
+            },
+            "description": "Only what changed, **including deleted rows** \u2014 a row with a non-null `deletedAt` means delete it locally.\n\n`members` and `labels` always come back in full; they are small.\n\nIf `hasMore` is true, call again with the new `serverTime` until it is false."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"syncSince\", body.serverTime);",
+                  "console.log(\"changed:\", body.tasks.length, \"tasks,\", body.boards.length, \"boards\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. Permission examples",
+      "description": "Run **Log in (seeded MEMBER)** in folder 1 first \u2014 these use that second token.\n\nThey also assume that user is still a MEMBER of `{{workspaceId}}`. If you promoted them in folder 4, set the role back to MEMBER first, or these will succeed instead of being refused.",
+      "item": [
+        {
+          "name": "MEMBER creates a board (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "boards"]
+            },
+            "description": "Boards need ADMIN. A MEMBER gets 403 FORBIDDEN \u2014 they can see the workspace, they just cannot do this.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Not allowed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Non-member reads a workspace (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}"]
+            },
+            "description": "If the MEMBER has left this workspace, this returns **404, not 403**.\n\nThat difference is deliberate: 403 would confirm the workspace exists, letting someone probe for valid ids. 404 reveals nothing.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 or 200 depending on membership\", () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No token at all (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Missing or malformed token \u2192 401 TOKEN_INVALID (log the user out).\nExpired token \u2192 401 TOKEN_EXPIRED (refresh and retry).\n\nYour app should branch on `error.code`, never on the message.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"code is TOKEN_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"TOKEN_INVALID\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
