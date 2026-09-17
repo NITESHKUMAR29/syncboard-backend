@@ -10,6 +10,12 @@ devices, streams changes to connected clients and sends push notifications.
 
 **Stack:** Node.js · TypeScript (strict, ESM) · Fastify · Zod · Prisma · PostgreSQL 16
 
+**Live:** <https://taskflow-backend-wzjw.onrender.com/api/v1> — API docs at
+[/docs](https://taskflow-backend-wzjw.onrender.com/docs), WebSocket at
+`wss://taskflow-backend-wzjw.onrender.com/api/v1/ws/workspaces/{id}`. Hosted on Render's
+free tier against a Neon database, so the first request after ~15 minutes idle takes
+50 seconds or so while the instance wakes.
+
 ---
 
 ## Quick start
