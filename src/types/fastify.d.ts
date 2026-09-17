@@ -1,4 +1,5 @@
 import 'fastify';
+import type { onRequestAsyncHookHandler } from 'fastify';
 import type { Clock } from '../common/clock.js';
 import type { Env } from '../config/env.js';
 import type { Database } from '../plugins/prisma.js';
@@ -12,6 +13,8 @@ declare module 'fastify' {
     prisma: Database;
     clock: Clock;
     env: Env;
+    /** Route guard: verifies the access token and populates request.authUser. */
+    requireAuth: onRequestAsyncHookHandler;
   }
 
   interface FastifyRequest {

@@ -91,7 +91,7 @@ describe('health', () => {
   });
 
   it('is exempt from the rate limiter so uptime probes are never throttled', async () => {
-    app = await buildAppWithStubDatabase();
+    app = await buildAppWithStubDatabase({}, { RATE_LIMIT_ENABLED: true });
 
     const responses = await Promise.all(
       Array.from({ length: 130 }, () => app!.inject({ method: 'GET', url: '/api/v1/health' })),
@@ -109,5 +109,31 @@ describe('security headers', () => {
 
     expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(response.headers['x-frame-options']).toBe('SAMEORIGIN');
+  });
+});
+
+describe('rate limiting', () => {
+  it('allows 10 auth requests per minute per IP, then returns 429 RATE_LIMITED', async () => {
+    app = await buildAppWithStubDatabase({}, { RATE_LIMIT_ENABLED: true });
+
+    const attempt = () =>
+      app!.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email: 'someone@example.com', password: 'whatever' },
+      });
+
+    // The limiter runs before the handler, so these never reach the database.
+    const allowed = [];
+    for (let i = 0; i < 10; i += 1) {
+      allowed.push(await attempt());
+    }
+    const blocked = await attempt();
+
+    expect(allowed.every((response) => response.statusCode !== 429)).toBe(true);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('RATE_LIMITED');
+    // Part B §4: clients are told when to come back.
+    expect(blocked.headers['retry-after']).toBeDefined();
   });
 });

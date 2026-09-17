@@ -1,17 +1,29 @@
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppDeps } from '../../src/app.js';
-import { createPrismaClient, type Database } from '../../src/plugins/prisma.js';
+import type { Database } from '../../src/plugins/prisma.js';
+import { createTestDatabase } from './database.js';
 import { testEnv } from './env.js';
 
-/** Builds the app against a real database (Testcontainers URL from global setup). */
-export async function buildTestApp(
-  databaseUrl: string,
-  deps: Omit<AppDeps, 'env' | 'prisma'> = {},
-): Promise<{ app: FastifyInstance; prisma: Database }> {
-  const prisma = createPrismaClient({ databaseUrl });
-  const app = await buildApp({ ...deps, env: testEnv({ DATABASE_URL: databaseUrl }), prisma });
+export interface TestApp {
+  app: FastifyInstance;
+  prisma: Database;
+  close(): Promise<void>;
+}
+
+/** Builds the app against a fresh throwaway database. */
+export async function buildTestApp(deps: Omit<AppDeps, 'env' | 'prisma'> = {}): Promise<TestApp> {
+  const database = await createTestDatabase();
+  const app = await buildApp({ ...deps, env: testEnv(), prisma: database.prisma });
   await app.ready();
-  return { app, prisma };
+
+  return {
+    app,
+    prisma: database.prisma,
+    async close() {
+      await app.close();
+      await database.close();
+    },
+  };
 }
 
 /**
@@ -20,6 +32,7 @@ export async function buildTestApp(
  */
 export async function buildAppWithStubDatabase(
   stub: Partial<Database> = {},
+  envOverrides: Partial<Parameters<typeof testEnv>[0]> = {},
 ): Promise<FastifyInstance> {
   const database = {
     $queryRaw: () => Promise.resolve([{ '?column?': 1 }]),
@@ -27,7 +40,7 @@ export async function buildAppWithStubDatabase(
     ...stub,
   } as unknown as Database;
 
-  const app = await buildApp({ env: testEnv(), prisma: database });
+  const app = await buildApp({ env: testEnv(envOverrides), prisma: database });
   await app.ready();
   return app;
 }

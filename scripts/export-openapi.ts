@@ -28,6 +28,7 @@ const exportEnv: Env = {
   PUBLIC_BASE_URL: 'http://localhost:8080',
   CORS_ALLOWED_ORIGINS: '',
   ENABLE_SWAGGER_UI: false,
+  RATE_LIMIT_ENABLED: false,
 };
 
 async function main(): Promise<void> {

@@ -40,6 +40,9 @@ const envSchema = z.object({
 
   CORS_ALLOWED_ORIGINS: z.string().default(''),
   ENABLE_SWAGGER_UI: booleanish.default(true),
+  // Off in the test suite, which would otherwise throttle itself: every request comes
+  // from the same address. The rate limiter's own tests turn it back on.
+  RATE_LIMIT_ENABLED: booleanish.default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;

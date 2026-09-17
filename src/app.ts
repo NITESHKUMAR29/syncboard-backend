@@ -7,9 +7,13 @@ import {
 } from 'fastify-type-provider-zod';
 import { systemClock, type Clock } from './common/clock.js';
 import { loadEnv, type Env } from './config/env.js';
+import { authRoutes } from './features/auth/auth.routes.js';
+import { deviceRoutes } from './features/devices/device.routes.js';
 import { healthRoutes } from './features/health/health.routes.js';
+import { userRoutes } from './features/users/user.routes.js';
+import { createAccessTokenIssuer, registerAuth } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
-import { createPrismaClient, type Database } from './plugins/prisma.js';
+import { createDatabase, type Database } from './plugins/prisma.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerSwagger } from './plugins/swagger.js';
 
@@ -37,8 +41,10 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   const env = deps.env ?? loadEnv();
   const clock = deps.clock ?? systemClock;
   const version = deps.version ?? process.env.npm_package_version ?? '1.0.0';
-  const prisma = deps.prisma ?? createPrismaClient({ databaseUrl: env.DATABASE_URL });
-  const ownsPrisma = deps.prisma === undefined;
+  // When the caller supplies a client (tests), it owns its lifecycle; otherwise the app
+  // opens one and closes it on shutdown.
+  const database = deps.prisma ? undefined : createDatabase(env.DATABASE_URL);
+  const prisma = deps.prisma ?? database!.prisma;
 
   const app = Fastify({
     logger: buildLoggerOptions(env),
@@ -66,18 +72,24 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
 
   registerErrorHandler(app);
   await registerSecurity(app, env);
+  await registerAuth(app, env);
   await registerSwagger(app, env);
+
+  const accessTokens = createAccessTokenIssuer(app, env);
 
   await app.register(
     async (instance) => {
       await instance.register(healthRoutes, { version });
+      await instance.register(authRoutes, { accessTokens });
+      await instance.register(userRoutes);
+      await instance.register(deviceRoutes);
     },
     { prefix: API_PREFIX },
   );
 
-  if (ownsPrisma) {
+  if (database) {
     app.addHook('onClose', async () => {
-      await prisma.$disconnect();
+      await database.close();
     });
   }
 

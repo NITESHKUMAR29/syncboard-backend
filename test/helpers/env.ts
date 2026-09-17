@@ -7,7 +7,7 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
     PORT: 0,
     HOST: '127.0.0.1',
     LOG_LEVEL: 'silent',
-    DATABASE_URL: 'postgresql://taskflow:taskflow@127.0.0.1:5432/taskflow_test',
+    DATABASE_URL: 'pglite://memory',
     JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
     JWT_ISSUER: 'taskflow',
     JWT_AUDIENCE: 'taskflow-android',
@@ -17,6 +17,7 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
     PUBLIC_BASE_URL: 'http://localhost:8080',
     CORS_ALLOWED_ORIGINS: '',
     ENABLE_SWAGGER_UI: false,
+    RATE_LIMIT_ENABLED: false,
     ...overrides,
   };
 }

@@ -1,28 +1,19 @@
-import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { buildTestApp } from '../helpers/app.js';
-import type { Database } from '../../src/plugins/prisma.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { buildTestApp, type TestApp } from '../helpers/app.js';
 
-/** Health against real PostgreSQL. */
-
-let app: FastifyInstance;
-let prisma: Database;
+let testApp: TestApp;
 
 beforeAll(async () => {
-  const started = await buildTestApp(inject('databaseUrl'));
-  app = started.app;
-  prisma = started.prisma;
+  testApp = await buildTestApp();
 });
 
 afterAll(async () => {
-  await app.close();
-  await prisma.$disconnect();
+  await testApp.close();
 });
 
 describe('GET /api/v1/health', () => {
   it('reports UP with the database UP', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
-
+    const response = await testApp.app.inject({ method: 'GET', url: '/api/v1/health' });
     const body = response.json<{ status: string; database: string; version: string }>();
 
     expect(response.statusCode).toBe(200);
@@ -31,7 +22,7 @@ describe('GET /api/v1/health', () => {
   });
 
   it('needs no authentication', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
+    const response = await testApp.app.inject({ method: 'GET', url: '/api/v1/health' });
 
     expect(response.statusCode).not.toBe(401);
   });

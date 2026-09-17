@@ -29,6 +29,10 @@ export async function registerSecurity(app: FastifyInstance, env: Env): Promise<
     credentials: true,
   });
 
+  if (!env.RATE_LIMIT_ENABLED) {
+    return;
+  }
+
   await app.register(rateLimit, {
     global: true,
     max: GLOBAL_RATE_LIMIT_MAX,

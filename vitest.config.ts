@@ -5,18 +5,16 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['test/**/*.test.ts'],
-    globalSetup: ['test/helpers/global-setup.ts'],
-    // Starting a container and applying migrations is slow on a cold Docker daemon.
-    hookTimeout: 120_000,
+    // Each file builds its own in-memory database, so nothing is shared and files can
+    // run in parallel. Starting PostgreSQL-in-WASM costs a second or two per file.
     testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/**/*.service.ts', 'src/common/**/*.ts', 'src/config/**/*.ts'],
       exclude: ['src/generated/**'],
-      thresholds: {
-        lines: 80,
-      },
+      thresholds: { lines: 80 },
     },
   },
 });
