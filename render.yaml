@@ -26,6 +26,12 @@ services:
     healthCheckPath: /api/v1/health
 
     envVars:
+      # Pin the runtime. Without this the platform picks its own default, which can
+      # differ from the version the lockfile was resolved against and changes under you
+      # over time. Prisma 7 requires ^20.19, ^22.12 or >=24.
+      - key: NODE_VERSION
+        value: "22.20.0"
+
       - key: NODE_ENV
         value: production
       - key: LOG_LEVEL
