@@ -60,7 +60,7 @@ export interface WorkspaceServiceDeps {
   events: EventBroadcaster;
   push: PushSender;
   /** Resolves a label's workspace, since /labels/{id} carries no workspace in its path. */
-  workspaceIdOfLabel(labelId: string): Promise<string | null>;
+  workspaceIdOfLabel: (labelId: string) => Promise<string | null>;
 }
 
 export function createWorkspaceService({

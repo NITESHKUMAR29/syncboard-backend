@@ -51,7 +51,7 @@ export async function recordActivity(tx: Writer, input: ActivityInput, now: Date
       entityType: input.entityType,
       entityId: input.entityId,
       action: input.action,
-      payload: { summary: input.summary, ...input.extra } as Prisma.InputJsonValue,
+      payload: { summary: input.summary, ...input.extra },
       createdAt: now,
     },
   });
