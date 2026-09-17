@@ -38,6 +38,41 @@ describe('loadEnv', () => {
   });
 });
 
+describe('PUBLIC_BASE_URL', () => {
+  it('defaults to localhost for development', () => {
+    expect(loadEnv(minimal).PUBLIC_BASE_URL).toBe('http://localhost:8080');
+  });
+
+  it('takes the platform URL when no explicit value is given', () => {
+    const env = loadEnv({ ...minimal, RENDER_EXTERNAL_URL: 'https://app.onrender.com' });
+
+    expect(env.PUBLIC_BASE_URL).toBe('https://app.onrender.com');
+  });
+
+  it('prefers an explicit value over the platform one', () => {
+    const env = loadEnv({
+      ...minimal,
+      PUBLIC_BASE_URL: 'https://api.example.com',
+      RENDER_EXTERNAL_URL: 'https://app.onrender.com',
+    });
+
+    expect(env.PUBLIC_BASE_URL).toBe('https://api.example.com');
+  });
+
+  it('rejects an internal host:port, which would yield unopenable file URLs', () => {
+    // The trap: new URL() reads "taskflow-backend-wzjw:" as a protocol and accepts this.
+    expect(() =>
+      loadEnv({ ...minimal, RENDER_EXTERNAL_URL: 'taskflow-backend-wzjw:10000' }),
+    ).toThrow(/PUBLIC_BASE_URL/);
+  });
+
+  it('rejects a non-http scheme', () => {
+    expect(() => loadEnv({ ...minimal, PUBLIC_BASE_URL: 'ftp://files.example.com' })).toThrow(
+      /PUBLIC_BASE_URL/,
+    );
+  });
+});
+
 describe('corsOrigins', () => {
   it('is empty by default, which disables cross-origin requests', () => {
     expect(corsOrigins(loadEnv(minimal))).toEqual([]);

@@ -33,7 +33,7 @@ services:
       # differ from the version the lockfile was resolved against and changes under you
       # over time. Prisma 7 requires ^20.19, ^22.12 or >=24.
       - key: NODE_VERSION
-        value: "22.20.0"
+        value: '22.20.0'
 
       - key: NODE_ENV
         value: production
@@ -54,17 +54,13 @@ services:
       - key: JWT_AUDIENCE
         value: taskflow-android
       - key: ACCESS_TOKEN_TTL_MINUTES
-        value: "15"
+        value: '15'
       - key: REFRESH_TOKEN_TTL_DAYS
-        value: "30"
+        value: '30'
 
-      # Used to build absolute URLs for uploaded files. Render substitutes the service's
-      # own https:// address.
-      - key: PUBLIC_BASE_URL
-        fromService:
-          type: web
-          name: taskflow-backend
-          property: hostport
+      # PUBLIC_BASE_URL is deliberately not set here. `fromService` exposes the internal
+      # address (host:port), which produces file URLs no client outside the platform can
+      # open. The app falls back to RENDER_EXTERNAL_URL, which is the public https:// one.
 
       # Empty means uploads go to local disk, which a free instance wipes on redeploy.
       # Set these to a Cloudflare R2 or S3 bucket if attachments must survive.

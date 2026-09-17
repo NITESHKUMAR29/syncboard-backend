@@ -36,7 +36,25 @@ const envSchema = z.object({
   STORAGE_SECRET_KEY: z.string().optional(),
   STORAGE_ENDPOINT: z.string().optional(),
   STORAGE_LOCAL_DIR: z.string().default('./uploads'),
-  PUBLIC_BASE_URL: z.string().url().default('http://localhost:8080'),
+  /**
+   * The origin that uploaded files are served from, used to build their URLs.
+   *
+   * The scheme is checked explicitly: `new URL()` happily accepts "my-host:10000" by
+   * reading "my-host:" as the protocol, which yields links no client can open. A host
+   * that hands out an internal address instead of a public one should fail at startup,
+   * not quietly produce broken URLs.
+   */
+  PUBLIC_BASE_URL: z
+    .string()
+    .url()
+    .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
+      message: 'PUBLIC_BASE_URL must start with http:// or https://',
+    })
+    .optional(),
+
+  // Set by Render for web services; the equivalent on other hosts can be mapped onto
+  // PUBLIC_BASE_URL directly.
+  RENDER_EXTERNAL_URL: z.string().optional(),
 
   // Push: empty means log-only sender (A9).
   FIREBASE_CREDENTIALS_JSON: z.string().optional(),
@@ -48,7 +66,11 @@ const envSchema = z.object({
   RATE_LIMIT_ENABLED: booleanish.default(true),
 });
 
-export type Env = z.infer<typeof envSchema>;
+type ParsedEnv = z.infer<typeof envSchema>;
+
+export type Env = Omit<ParsedEnv, 'PUBLIC_BASE_URL' | 'RENDER_EXTERNAL_URL'> & {
+  PUBLIC_BASE_URL: string;
+};
 
 /** Parses and validates the environment, throwing a readable error listing every problem. */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -61,7 +83,20 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment configuration:\n${problems}`);
   }
 
-  return result.data;
+  const parsed = result.data;
+
+  // An explicit value wins; otherwise take the platform's public URL, and fall back to
+  // localhost for development.
+  const publicBaseUrl =
+    parsed.PUBLIC_BASE_URL ?? parsed.RENDER_EXTERNAL_URL ?? 'http://localhost:8080';
+
+  if (!publicBaseUrl.startsWith('http://') && !publicBaseUrl.startsWith('https://')) {
+    throw new Error(
+      `Invalid environment configuration:\n  - PUBLIC_BASE_URL: must start with http:// or https://, received "${publicBaseUrl}"`,
+    );
+  }
+
+  return { ...parsed, PUBLIC_BASE_URL: publicBaseUrl };
 }
 
 /** Comma-separated CORS origins; an empty value disables cross-origin requests. */

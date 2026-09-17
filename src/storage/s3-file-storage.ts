@@ -15,9 +15,7 @@ export interface S3StorageConfig {
  * rather than at module scope.
  */
 export async function createS3FileStorage(config: S3StorageConfig): Promise<FileStorage> {
-  const { DeleteObjectCommand, PutObjectCommand, S3Client } = await import(
-    '@aws-sdk/client-s3'
-  );
+  const { DeleteObjectCommand, PutObjectCommand, S3Client } = await import('@aws-sdk/client-s3');
 
   const client = new S3Client({
     ...(config.region ? { region: config.region } : {}),
