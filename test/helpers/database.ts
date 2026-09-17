@@ -12,7 +12,7 @@ export interface TestDatabase {
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const handle = createDatabase('pglite://memory');
+  const handle = await createDatabase('pglite://memory');
   await handle.applyMigrations();
   return handle;
 }

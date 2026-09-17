@@ -10,7 +10,11 @@ import type { PushSender } from './push-sender.js';
  * A9: Firebase when FIREBASE_CREDENTIALS_JSON is set, otherwise the logging sender, so
  * the project runs with no paid account.
  */
-export function createPushSender(env: Env, db: Database, logger: PushLogger): PushSender {
+export async function createPushSender(
+  env: Env,
+  db: Database,
+  logger: PushLogger,
+): Promise<PushSender> {
   const devices = createDeviceTokenLookup(db);
 
   if (!env.FIREBASE_CREDENTIALS_JSON) {
@@ -18,8 +22,8 @@ export function createPushSender(env: Env, db: Database, logger: PushLogger): Pu
   }
 
   try {
-    return createFirebasePushSender(
-      createFirebaseApp(env.FIREBASE_CREDENTIALS_JSON),
+    return await createFirebasePushSender(
+      await createFirebaseApp(env.FIREBASE_CREDENTIALS_JSON),
       devices,
       logger,
     );

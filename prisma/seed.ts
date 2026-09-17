@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const database = createDatabase(databaseUrl);
+  const database = await createDatabase(databaseUrl);
   const db = database.prisma;
   const now = new Date();
 

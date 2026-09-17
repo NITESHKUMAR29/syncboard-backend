@@ -22,7 +22,7 @@ if (!databaseUrl) {
 }
 
 if (isEmbeddedUrl(databaseUrl)) {
-  const database = createDatabase(databaseUrl);
+  const database = await createDatabase(databaseUrl);
   const applied = await database.applyMigrations();
   await database.close();
 

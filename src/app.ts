@@ -66,13 +66,13 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   const version = deps.version ?? process.env.npm_package_version ?? '1.0.0';
   // When the caller supplies a client (tests), it owns its lifecycle; otherwise the app
   // opens one and closes it on shutdown.
-  const database = deps.prisma ? undefined : createDatabase(env.DATABASE_URL);
+  const database = deps.prisma ? undefined : await createDatabase(env.DATABASE_URL);
   const prisma = deps.prisma ?? database!.prisma;
   // The registry is both the broadcaster services call and the store the WebSocket
   // route registers connections in, so live events need no wiring beyond this.
   const registry = deps.events ? undefined : createSessionRegistry();
   const events = deps.events ?? registry ?? createNoopBroadcaster();
-  const storage = deps.storage ?? createFileStorage(env);
+  const storage = deps.storage ?? (await createFileStorage(env));
 
   const app = Fastify({
     logger: buildLoggerOptions(env),
@@ -100,7 +100,7 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
 
   // Push needs the logger, so it is built once Fastify exists. A test-supplied sender
   // wins; otherwise Firebase when credentials are set, and logged payloads when not.
-  const push = deps.push ?? createPushSender(env, prisma, app.log);
+  const push = deps.push ?? (await createPushSender(env, prisma, app.log));
 
   // The scheduler lives in this process (A9), so it belongs to the app's lifecycle.
   // Tests pass their own push sender and get no scheduler, since a timer that outlives

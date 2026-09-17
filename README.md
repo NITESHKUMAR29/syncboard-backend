@@ -266,17 +266,64 @@ such a migration — delete the generated file and keep the index.
 
 ## Deployment
 
-The multi-stage `Dockerfile` installs and builds with `npm ci` and `tsc`, runs
-`prisma generate`, then copies `dist/`, production dependencies and the Prisma client into
-a slim Node image. The container runs `prisma migrate deploy` before starting the server.
+The free combination that works: **Render** for the server, **Neon** for the database.
+Both have free tiers, and both support what this needs — in particular a long-lived
+process for WebSockets, which rules out Vercel, Netlify and Cloudflare Workers.
 
-HTTPS is required in staging and production, because Android blocks cleartext traffic by
-default.
+### Before you deploy: verify against the real database
 
-`GET /api/v1/health` returns `{"status":"UP","database":"UP","version":"1.0.0"}` for
-uptime checks and is exempt from rate limiting.
+Every test runs against PGlite. It is the same PostgreSQL engine, but the **connection
+path is different**: deployed, the server talks to a server over TCP through a different
+driver. Exercise that once locally before trusting it in production:
 
----
+```bash
+DATABASE_URL="postgresql://…neon.tech/taskflow?sslmode=require" npm run db:migrate
+DATABASE_URL="postgresql://…neon.tech/taskflow?sslmode=require" npm run db:seed
+DATABASE_URL="postgresql://…neon.tech/taskflow?sslmode=require" npm run dev
+```
+
+Then `curl http://localhost:8080/api/v1/health` and check it reports `"database":"UP"`.
+If that works, the deployment will.
+
+### Steps
+
+1. **Push to GitHub.** Render deploys from a repository.
+
+   ```bash
+   git remote add origin https://github.com/YOUR-NAME/taskflow-backend.git
+   git push -u origin main
+   ```
+
+2. **Get the Neon connection string.** Use the **direct** (unpooled) one: this server
+   keeps its own connection pool, and stacking it on PgBouncer breaks Prisma's prepared
+   statements. Keep the `?sslmode=require` suffix.
+
+3. **Create the Render service.** New → **Blueprint** → pick the repo. `render.yaml`
+   supplies the build and start commands, the health check and every variable, so the
+   only thing to fill in is `DATABASE_URL`. Leave the storage and Firebase variables
+   empty.
+
+4. **Deploy.** Render runs `prisma migrate deploy` before switching traffic over, so the
+   schema is never behind the code.
+
+5. **Point the app at it.** `https://your-service.onrender.com/api/v1`. HTTPS comes free,
+   which Android requires — it blocks cleartext by default.
+
+### What the free tier costs you
+
+- **Cold starts.** A free instance sleeps after about 15 minutes idle and takes 30–60
+  seconds to wake. Neon suspends too. Fine for a personal project, awkward in a demo.
+- **Uploads do not survive a redeploy.** Files go to the instance's local disk, which is
+  wiped on each deploy. Everything else lives in Neon and is safe. If attachments need to
+  persist, point `STORAGE_BUCKET` and the related variables at a Cloudflare R2 bucket
+  (free tier, S3-compatible) — the code already supports it.
+- Free tier terms change; check Render's current limits rather than trusting this list.
+
+### Other hosts
+
+`Dockerfile` builds a self-contained image, so anything that runs a container works —
+Fly.io, Koyeb, Railway. Of those, Koyeb has a comparable free instance; Railway and
+Fly.io now run on trial credit rather than a free tier.
 
 ## Implementation status
 

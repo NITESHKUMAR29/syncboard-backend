@@ -4,7 +4,7 @@ import { createLocalFileStorage } from '../storage/local-file-storage.js';
 import { createS3FileStorage } from '../storage/s3-file-storage.js';
 
 /** A9: an empty STORAGE_BUCKET means local disk, so the project runs with no accounts. */
-export function createFileStorage(env: Env): FileStorage {
+export async function createFileStorage(env: Env): Promise<FileStorage> {
   if (env.STORAGE_BUCKET) {
     return createS3FileStorage({
       bucket: env.STORAGE_BUCKET,

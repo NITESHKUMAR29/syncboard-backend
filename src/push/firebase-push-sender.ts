@@ -1,5 +1,4 @@
-import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
-import { getMessaging } from 'firebase-admin/messaging';
+import type { App } from 'firebase-admin/app';
 import type { DeviceTokenLookup } from './device-tokens.js';
 import type { PushMessage, PushSender } from './push-sender.js';
 import type { PushLogger } from './logging-push-sender.js';
@@ -17,8 +16,15 @@ const UNREGISTERED_CODES = new Set([
   'messaging/invalid-argument',
 ]);
 
-/** Decodes the base64 service account in FIREBASE_CREDENTIALS_JSON. */
-export function createFirebaseApp(credentialsBase64: string): App {
+/**
+ * Decodes the base64 service account in FIREBASE_CREDENTIALS_JSON.
+ *
+ * firebase-admin is imported here rather than at module scope, so a deployment with no
+ * push credentials never loads it.
+ */
+export async function createFirebaseApp(credentialsBase64: string): Promise<App> {
+  const { cert, getApps, initializeApp } = await import('firebase-admin/app');
+
   const existing = getApps()[0];
   if (existing) return existing;
 
@@ -27,11 +33,12 @@ export function createFirebaseApp(credentialsBase64: string): App {
   return initializeApp({ credential: cert(json as Parameters<typeof cert>[0]) });
 }
 
-export function createFirebasePushSender(
+export async function createFirebasePushSender(
   app: App,
   devices: DeviceTokenLookup,
   logger: PushLogger,
-): PushSender {
+): Promise<PushSender> {
+  const { getMessaging } = await import('firebase-admin/messaging');
   const messaging = getMessaging(app);
 
   return {

@@ -2,9 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaPGlite } from 'pglite-prisma-adapter';
 import { PrismaClient } from '../generated/prisma/client.js';
 
 /**
@@ -19,6 +17,10 @@ import { PrismaClient } from '../generated/prisma/client.js';
  * PGlite is the same PostgreSQL engine, so the schema, migrations and queries are
  * identical; it just needs nothing installed. That makes it the default for local
  * development and for tests, where each file gets its own throwaway in-memory database.
+ *
+ * PGlite carries 25 MB of WebAssembly, so it is imported only when actually selected:
+ * a deployed server talking to PostgreSQL should not pay to load a database it will
+ * never use.
  *
  * Repositories are the only layer that touches the returned client (NFR-9).
  */
@@ -47,7 +49,7 @@ export function isEmbeddedUrl(url: string): boolean {
 }
 
 /** Opens a database from a connection URL, choosing the driver from its scheme. */
-export function createDatabase(url: string): DatabaseHandle {
+export async function createDatabase(url: string): Promise<DatabaseHandle> {
   return isEmbeddedUrl(url) ? createEmbeddedDatabase(url) : createServerDatabase(url);
 }
 
@@ -69,7 +71,13 @@ function createServerDatabase(connectionString: string): DatabaseHandle {
   };
 }
 
-function createEmbeddedDatabase(url: string): DatabaseHandle {
+async function createEmbeddedDatabase(url: string): Promise<DatabaseHandle> {
+  // Loaded here rather than at module scope: see the note above.
+  const [{ PGlite }, { PrismaPGlite }] = await Promise.all([
+    import('@electric-sql/pglite'),
+    import('pglite-prisma-adapter'),
+  ]);
+
   const dataDir = toDataDir(url);
 
   // PGlite creates its data directory non-recursively, so a nested path like

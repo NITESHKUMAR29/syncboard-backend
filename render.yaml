@@ -1,0 +1,71 @@
+# Render Blueprint. Importing the repo with this file present fills in the build and
+# start commands, the health check and the environment variables, so the only manual
+# step is pasting the two secrets.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: taskflow-backend
+    runtime: node
+    plan: free
+    # Region only matters for latency; pick the one nearest your Neon database.
+    region: oregon
+
+    buildCommand: npm ci && npm run build
+    # Runs after the build, before traffic is switched over, so the schema is never
+    # behind the code that expects it.
+    preDeployCommand: npx prisma migrate deploy
+    startCommand: npm start
+
+    # Render restarts the service if this stops returning 200.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+      # Paste your Neon DIRECT (unpooled) connection string, ending in ?sslmode=require.
+      # Marked sync:false so Render prompts for it instead of storing it in this file.
+      - key: DATABASE_URL
+        sync: false
+
+      # Generated once by Render and kept. Changing it signs everyone out.
+      - key: JWT_SECRET
+        generateValue: true
+
+      - key: JWT_ISSUER
+        value: taskflow
+      - key: JWT_AUDIENCE
+        value: taskflow-android
+      - key: ACCESS_TOKEN_TTL_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+
+      # Used to build absolute URLs for uploaded files. Render substitutes the service's
+      # own https:// address.
+      - key: PUBLIC_BASE_URL
+        fromService:
+          type: web
+          name: taskflow-backend
+          property: hostport
+
+      # Empty means uploads go to local disk, which a free instance wipes on redeploy.
+      # Set these to a Cloudflare R2 or S3 bucket if attachments must survive.
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_REGION
+        sync: false
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+      - key: STORAGE_ENDPOINT
+        sync: false
+
+      # Empty means push payloads are written to the log instead of sent.
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
