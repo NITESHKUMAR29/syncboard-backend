@@ -9,8 +9,10 @@ services:
     name: taskflow-backend
     runtime: node
     plan: free
-    # Region only matters for latency; pick the one nearest your Neon database.
-    region: oregon
+    # Put the server in the same region as the database. A single API request makes
+    # several queries, so a cross-country round trip on each one is felt immediately.
+    # This matches a Neon project in us-east-2. If Render rejects the name, use `oregon`.
+    region: ohio
 
     buildCommand: npm ci && npm run build
     # Runs after the build, before traffic is switched over, so the schema is never
