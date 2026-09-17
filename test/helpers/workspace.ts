@@ -61,3 +61,49 @@ export async function addMember(
     throw new Error(`addMember failed: ${response.body}`);
   }
 }
+
+/** Creates a board in the fixture workspace and returns its id. */
+export async function createBoard(
+  app: FastifyInstance,
+  workspaceId: string,
+  actor: RegisteredUser,
+  title = 'Sprint 12',
+): Promise<string> {
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/v1/workspaces/${workspaceId}/boards`,
+    headers: actor.auth,
+    payload: { title },
+  });
+
+  if (response.statusCode !== 201) {
+    throw new Error(`createBoard failed: ${response.body}`);
+  }
+
+  return response.json<{ id: string }>().id;
+}
+
+export interface CreatedTask {
+  id: string;
+  version: number;
+}
+
+export async function createTask(
+  app: FastifyInstance,
+  boardId: string,
+  actor: RegisteredUser,
+  payload: Record<string, unknown> = {},
+): Promise<CreatedTask> {
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/v1/boards/${boardId}/tasks`,
+    headers: actor.auth,
+    payload: { title: 'Implement login screen', ...payload },
+  });
+
+  if (response.statusCode !== 201) {
+    throw new Error(`createTask failed: ${response.body}`);
+  }
+
+  return response.json<CreatedTask>();
+}

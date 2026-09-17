@@ -8,9 +8,11 @@ import {
 import { systemClock, type Clock } from './common/clock.js';
 import { loadEnv, type Env } from './config/env.js';
 import { authRoutes } from './features/auth/auth.routes.js';
+import { boardRoutes } from './features/boards/board.routes.js';
 import { deviceRoutes } from './features/devices/device.routes.js';
 import { healthRoutes } from './features/health/health.routes.js';
 import { createNoopBroadcaster, type EventBroadcaster } from './features/realtime/events.js';
+import { taskRoutes } from './features/tasks/task.routes.js';
 import { userRoutes } from './features/users/user.routes.js';
 import { workspaceRoutes } from './features/workspaces/workspace.routes.js';
 import { createNoopPushSender, type PushSender } from './push/push-sender.js';
@@ -93,6 +95,8 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
       await instance.register(userRoutes);
       await instance.register(deviceRoutes);
       await instance.register(workspaceRoutes, { events, push });
+      await instance.register(boardRoutes, { events });
+      await instance.register(taskRoutes, { events, push });
     },
     { prefix: API_PREFIX },
   );
