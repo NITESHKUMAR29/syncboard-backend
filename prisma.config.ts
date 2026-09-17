@@ -16,5 +16,12 @@ export default defineConfig({
   },
   datasource: {
     url: process.env.DATABASE_URL ?? '',
+    // `prisma migrate dev` needs a throwaway database to verify migrations against. It
+    // creates one automatically on local PostgreSQL, but managed providers such as Neon
+    // do not always grant that, so point SHADOW_DATABASE_URL at a second empty database
+    // there. Unset is correct for local PostgreSQL and for `migrate deploy`.
+    ...(process.env.SHADOW_DATABASE_URL
+      ? { shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL }
+      : {}),
   },
 });

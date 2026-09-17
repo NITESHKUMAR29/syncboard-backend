@@ -14,8 +14,8 @@ devices, streams changes to connected clients and sends push notifications.
 
 ## Quick start
 
-You need Node.js 20.19+ (Active LTS recommended) and Docker. Nothing else, and no paid
-accounts. Docker is required for the integration tests, which start their own PostgreSQL.
+You need Node.js 20.19+ (Active LTS recommended) and a PostgreSQL 16 database. No paid
+accounts are required.
 
 ```bash
 cp .env.example .env         # then set JWT_SECRET to 32+ random characters
@@ -24,6 +24,47 @@ npm install
 npm run db:migrate           # applies migrations and generates the Prisma client
 npm run dev                  # http://localhost:8080
 ```
+
+### Using Neon instead of local PostgreSQL
+
+The server talks to Neon over plain TCP, so nothing in the code changes — only
+`DATABASE_URL`. Skip `docker compose up -d` and do this instead:
+
+1. Create a free project at <https://neon.tech> and a database named `taskflow`.
+2. Copy the **direct** (unpooled) connection string. This is a long-running server that
+   keeps its own connection pool, so it wants the direct endpoint, not the pooled one.
+3. Create a second, empty database in the same project — call it `taskflow_shadow`.
+   `prisma migrate dev` needs a throwaway database to verify migrations against, and
+   managed providers do not always let it create one on the fly.
+4. Put both in `.env`:
+
+   ```bash
+   DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow?sslmode=require
+   SHADOW_DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/taskflow_shadow?sslmode=require
+   ```
+
+5. `npm run db:migrate && npm run dev`.
+
+`SHADOW_DATABASE_URL` is only read by the Prisma CLI, and only by `migrate dev`. Leave it
+unset for local PostgreSQL and in production, where `migrate deploy` does not need it.
+
+Neon free-tier projects suspend when idle, so the first request after a pause takes about
+half a second. That is expected and only affects development.
+
+### Running the tests without Docker Desktop
+
+The integration tests start their own PostgreSQL through Testcontainers, which needs a
+container runtime — Neon cannot stand in for it, because these tests create and drop
+schema on a throwaway database. Docker Desktop is not the only option:
+
+```bash
+brew install colima docker && colima start   # lightweight, free
+# or: brew install orbstack
+# or: brew install podman && podman machine init && podman machine start
+```
+
+`npm run test:no-db` runs the suites that need no database at all, if you just want a
+quick check.
 
 Check it is alive:
 
@@ -74,21 +115,22 @@ Every variable is validated with Zod at startup. The server refuses to start if 
 missing or invalid and prints exactly which one. See `.env.example` for the full list
 with comments.
 
-| Variable                      | Default                         | Notes                                                 |
-| ----------------------------- | ------------------------------- | ----------------------------------------------------- |
-| `NODE_ENV`                    | `development`                   | `development` \| `test` \| `production`               |
-| `PORT`                        | `8080`                          | Keeps the emulator URL at `http://10.0.2.2:8080`      |
-| `HOST`                        | `0.0.0.0`                       | Must not be `127.0.0.1` for the emulator to reach it  |
-| `LOG_LEVEL`                   | `info`                          | Pino level                                            |
-| `DATABASE_URL`                | —                               | **Required**                                          |
-| `JWT_SECRET`                  | —                               | **Required**, at least 32 characters                  |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | `taskflow` / `taskflow-android` | JWT claims                                            |
-| `ACCESS_TOKEN_TTL_MINUTES`    | `15`                            | Access token lifetime                                 |
-| `REFRESH_TOKEN_TTL_DAYS`      | `30`                            | Refresh token lifetime                                |
-| `STORAGE_BUCKET` and friends  | empty                           | Empty means local disk under `STORAGE_LOCAL_DIR`      |
-| `FIREBASE_CREDENTIALS_JSON`   | empty                           | Empty means push payloads are only logged             |
-| `CORS_ALLOWED_ORIGINS`        | empty                           | Comma-separated; empty disables cross-origin requests |
-| `ENABLE_SWAGGER_UI`           | `true`                          | Serves Swagger UI at `/docs`                          |
+| Variable                      | Default                         | Notes                                                        |
+| ----------------------------- | ------------------------------- | ------------------------------------------------------------ |
+| `NODE_ENV`                    | `development`                   | `development` \| `test` \| `production`                      |
+| `PORT`                        | `8080`                          | Keeps the emulator URL at `http://10.0.2.2:8080`             |
+| `HOST`                        | `0.0.0.0`                       | Must not be `127.0.0.1` for the emulator to reach it         |
+| `LOG_LEVEL`                   | `info`                          | Pino level                                                   |
+| `DATABASE_URL`                | —                               | **Required**. Local PostgreSQL or a managed one such as Neon |
+| `SHADOW_DATABASE_URL`         | empty                           | Only for `prisma migrate dev` against a managed database     |
+| `JWT_SECRET`                  | —                               | **Required**, at least 32 characters                         |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `taskflow` / `taskflow-android` | JWT claims                                                   |
+| `ACCESS_TOKEN_TTL_MINUTES`    | `15`                            | Access token lifetime                                        |
+| `REFRESH_TOKEN_TTL_DAYS`      | `30`                            | Refresh token lifetime                                       |
+| `STORAGE_BUCKET` and friends  | empty                           | Empty means local disk under `STORAGE_LOCAL_DIR`             |
+| `FIREBASE_CREDENTIALS_JSON`   | empty                           | Empty means push payloads are only logged                    |
+| `CORS_ALLOWED_ORIGINS`        | empty                           | Comma-separated; empty disables cross-origin requests        |
+| `ENABLE_SWAGGER_UI`           | `true`                          | Serves Swagger UI at `/docs`                                 |
 
 No secret is ever committed. `.env` is git-ignored; `.env.example` holds placeholders only.
 
@@ -144,6 +186,8 @@ code, because both come from the same Zod schemas.
 ---
 
 ## Testing
+
+Requires a container runtime — see [Running the tests without Docker Desktop](#running-the-tests-without-docker-desktop).
 
 | Level       | Tool                                         | Covers                                                      |
 | ----------- | -------------------------------------------- | ----------------------------------------------------------- |
