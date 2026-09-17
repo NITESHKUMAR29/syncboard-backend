@@ -58,9 +58,13 @@ services:
       - key: REFRESH_TOKEN_TTL_DAYS
         value: '30'
 
-      # PUBLIC_BASE_URL is deliberately not set here. `fromService` exposes the internal
-      # address (host:port), which produces file URLs no client outside the platform can
-      # open. The app falls back to RENDER_EXTERNAL_URL, which is the public https:// one.
+      # The origin uploaded files are served from. Set it to the service's public
+      # https:// address once the URL is known, or leave it blank and the app will use
+      # the platform's own public URL. It is deliberately not derived with `fromService`,
+      # which exposes the internal host:port and yields links nothing outside the
+      # platform's network can open.
+      - key: PUBLIC_BASE_URL
+        sync: false
 
       # Empty means uploads go to local disk, which a free instance wipes on redeploy.
       # Set these to a Cloudflare R2 or S3 bucket if attachments must survive.

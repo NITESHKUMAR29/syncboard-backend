@@ -59,11 +59,21 @@ describe('PUBLIC_BASE_URL', () => {
     expect(env.PUBLIC_BASE_URL).toBe('https://api.example.com');
   });
 
-  it('rejects an internal host:port, which would yield unopenable file URLs', () => {
+  it('rejects an internal host:port, naming the variable at fault', () => {
     // The trap: new URL() reads "taskflow-backend-wzjw:" as a protocol and accepts this.
     expect(() =>
       loadEnv({ ...minimal, RENDER_EXTERNAL_URL: 'taskflow-backend-wzjw:10000' }),
-    ).toThrow(/PUBLIC_BASE_URL/);
+    ).toThrow(/RENDER_EXTERNAL_URL/);
+
+    expect(() => loadEnv({ ...minimal, PUBLIC_BASE_URL: 'host:10000' })).toThrow(/PUBLIC_BASE_URL/);
+  });
+
+  it('treats a declared-but-blank value as unset, not as invalid', () => {
+    // A host that creates the variable for you leaves it empty; that must fall through
+    // to the default rather than stopping the server.
+    const env = loadEnv({ ...minimal, PUBLIC_BASE_URL: '', RENDER_EXTERNAL_URL: '' });
+
+    expect(env.PUBLIC_BASE_URL).toBe('http://localhost:8080');
   });
 
   it('rejects a non-http scheme', () => {

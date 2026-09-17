@@ -11,6 +11,22 @@ const booleanish = z
   .enum(['true', 'false', '1', '0'])
   .transform((value) => value === 'true' || value === '1');
 
+/**
+ * A URL that may be absent. A variable declared but left blank arrives as an empty
+ * string, which must mean "not set" rather than "set to something invalid", or a host
+ * that creates the variable for you turns an intended default into a startup failure.
+ */
+const optionalUrl = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z
+    .string()
+    .url()
+    .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
+      message: 'must start with http:// or https://',
+    })
+    .optional(),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
@@ -44,17 +60,11 @@ const envSchema = z.object({
    * that hands out an internal address instead of a public one should fail at startup,
    * not quietly produce broken URLs.
    */
-  PUBLIC_BASE_URL: z
-    .string()
-    .url()
-    .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
-      message: 'PUBLIC_BASE_URL must start with http:// or https://',
-    })
-    .optional(),
+  PUBLIC_BASE_URL: optionalUrl,
 
   // Set by Render for web services; the equivalent on other hosts can be mapped onto
   // PUBLIC_BASE_URL directly.
-  RENDER_EXTERNAL_URL: z.string().optional(),
+  RENDER_EXTERNAL_URL: optionalUrl,
 
   // Push: empty means log-only sender (A9).
   FIREBASE_CREDENTIALS_JSON: z.string().optional(),
