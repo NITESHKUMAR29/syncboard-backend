@@ -14,10 +14,12 @@ services:
     # This matches a Neon project in us-east-2. If Render rejects the name, use `oregon`.
     region: ohio
 
-    buildCommand: npm ci && npm run build
-    # Runs after the build, before traffic is switched over, so the schema is never
-    # behind the code that expects it.
-    preDeployCommand: npx prisma migrate deploy
+    # Migrations run as part of the build rather than as a pre-deploy step, which the
+    # free tier does not offer. Doing it here still means a failed migration fails the
+    # deploy instead of crash-looping a running service, and it keeps migrations out of
+    # the start command: a free instance sleeps and restarts often, and paying for a
+    # migration check on every wake would slow an already slow cold start.
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
     startCommand: npm start
 
     # Render restarts the service if this stops returning 200.
