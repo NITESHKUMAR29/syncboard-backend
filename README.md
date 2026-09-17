@@ -294,9 +294,15 @@ If that works, the deployment will.
    git push -u origin main
    ```
 
-2. **Get the Neon connection string.** Use the **direct** (unpooled) one: this server
-   keeps its own connection pool, and stacking it on PgBouncer breaks Prisma's prepared
-   statements. Keep the `?sslmode=require` suffix.
+2. **Get the Neon connection string.** Use the **direct** one — the host must not contain
+   `-pooler`. This server keeps its own connection pool, and stacking it on PgBouncer
+   breaks Prisma's prepared statements.
+
+   Change the suffix Neon gives you from `?sslmode=require` to **`?sslmode=verify-full`**,
+   and drop `&channel_binding=require`. The driver treats the two SSL modes identically
+   today, but warns that a future major version will downgrade `require` to encryption
+   without certificate verification — which would leave the connection open to
+   interception. Naming `verify-full` pins the behaviour you want.
 
 3. **Create the Render service.** New → **Blueprint** → pick the repo. `render.yaml`
    supplies the build and start commands, the health check and every variable, so the
