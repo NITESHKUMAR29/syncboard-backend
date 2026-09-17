@@ -7,8 +7,11 @@ import {
 } from 'fastify-type-provider-zod';
 import { systemClock, type Clock } from './common/clock.js';
 import { loadEnv, type Env } from './config/env.js';
+import { activityRoutes } from './features/activity/activity.routes.js';
+import { attachmentRoutes } from './features/attachments/attachment.routes.js';
 import { authRoutes } from './features/auth/auth.routes.js';
 import { boardRoutes } from './features/boards/board.routes.js';
+import { commentRoutes } from './features/comments/comment.routes.js';
 import { deviceRoutes } from './features/devices/device.routes.js';
 import { healthRoutes } from './features/health/health.routes.js';
 import { createNoopBroadcaster, type EventBroadcaster } from './features/realtime/events.js';
@@ -16,6 +19,9 @@ import { taskRoutes } from './features/tasks/task.routes.js';
 import { userRoutes } from './features/users/user.routes.js';
 import { workspaceRoutes } from './features/workspaces/workspace.routes.js';
 import { createNoopPushSender, type PushSender } from './push/push-sender.js';
+import { registerUploads } from './plugins/uploads.js';
+import { createFileStorage } from './plugins/storage.js';
+import type { FileStorage } from './storage/file-storage.js';
 import { createAccessTokenIssuer, registerAuth } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { createDatabase, type Database } from './plugins/prisma.js';
@@ -40,6 +46,8 @@ export interface AppDeps {
   events?: EventBroadcaster;
   /** Swapped for a fake in tests that assert on notifications. */
   push?: PushSender;
+  /** Swapped for an in-memory implementation in tests. */
+  storage?: FileStorage;
 }
 
 /**
@@ -56,6 +64,7 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   const prisma = deps.prisma ?? database!.prisma;
   const events = deps.events ?? createNoopBroadcaster();
   const push = deps.push ?? createNoopPushSender();
+  const storage = deps.storage ?? createFileStorage(env);
 
   const app = Fastify({
     logger: buildLoggerOptions(env),
@@ -84,6 +93,7 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
   registerErrorHandler(app);
   await registerSecurity(app, env);
   await registerAuth(app, env);
+  await registerUploads(app);
   await registerSwagger(app, env);
 
   const accessTokens = createAccessTokenIssuer(app, env);
@@ -97,6 +107,9 @@ export async function buildApp(deps: AppDeps = {}): Promise<FastifyInstance> {
       await instance.register(workspaceRoutes, { events, push });
       await instance.register(boardRoutes, { events });
       await instance.register(taskRoutes, { events, push });
+      await instance.register(commentRoutes, { events, push });
+      await instance.register(activityRoutes);
+      await instance.register(attachmentRoutes, { storage });
     },
     { prefix: API_PREFIX },
   );

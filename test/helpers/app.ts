@@ -3,22 +3,26 @@ import { buildApp, type AppDeps } from '../../src/app.js';
 import type { Database } from '../../src/plugins/prisma.js';
 import { createTestDatabase } from './database.js';
 import { testEnv } from './env.js';
+import { createFakeFileStorage, type FakeFileStorage } from './storage.js';
 
 export interface TestApp {
   app: FastifyInstance;
   prisma: Database;
+  storage: FakeFileStorage;
   close(): Promise<void>;
 }
 
 /** Builds the app against a fresh throwaway database. */
 export async function buildTestApp(deps: Omit<AppDeps, 'env' | 'prisma'> = {}): Promise<TestApp> {
   const database = await createTestDatabase();
-  const app = await buildApp({ ...deps, env: testEnv(), prisma: database.prisma });
+  const storage = createFakeFileStorage();
+  const app = await buildApp({ storage, ...deps, env: testEnv(), prisma: database.prisma });
   await app.ready();
 
   return {
     app,
     prisma: database.prisma,
+    storage,
     async close() {
       await app.close();
       await database.close();
