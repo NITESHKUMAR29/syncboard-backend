@@ -15,6 +15,8 @@ export const boardSchema = z.object({
 });
 
 export const createBoardBodySchema = z.object({
+  /** Client-generated, so an offline create can be retried without duplicating. */
+  id: z.string().uuid().optional(),
   title: z.string().trim().min(1).max(100),
 });
 

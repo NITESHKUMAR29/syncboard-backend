@@ -1068,10 +1068,10 @@
               "host": ["{{baseUrl}}"],
               "path": ["workspaces", "{{workspaceId}}", "boards"]
             },
-            "description": "ADMIN only. New boards are appended: the first gets position 1000, the next 2000, and so on.",
+            "description": "ADMIN only. New boards are appended: the first gets position 1000, the next 2000, and so on. Accepts an optional client-generated `id` (UUID): repeating a create with the same id returns 200 and the existing board instead of a duplicate.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Sprint 12\"\n}",
+              "raw": "{\n  \"id\": \"{{$guid}}\",\n  \"title\": \"Sprint 12\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Clock } from '../../common/clock.js';
-import { NotFoundError, VersionConflictError } from '../../common/errors.js';
+import { NotFoundError, ValidationError, VersionConflictError } from '../../common/errors.js';
 import { appendPosition } from '../../common/positions.js';
 import { ActivityAction, EntityType } from '../activity/activity.recorder.js';
 import { EventType, type EventBroadcaster } from '../realtime/events.js';
@@ -10,7 +10,12 @@ import type { BoardRepository } from './board.repository.js';
 import type { BoardDto, CreateBoardBody, UpdateBoardBody } from './board.schemas.js';
 
 export interface BoardService {
-  create(workspaceId: string, userId: string, body: CreateBoardBody): Promise<BoardDto>;
+  /** `created` is false when a retried offline create found its board already there. */
+  create(
+    workspaceId: string,
+    userId: string,
+    body: CreateBoardBody,
+  ): Promise<{ board: BoardDto; created: boolean }>;
   list(workspaceId: string, userId: string, includeArchived: boolean): Promise<BoardDto[]>;
   get(boardId: string, userId: string): Promise<BoardDto>;
   update(boardId: string, userId: string, body: UpdateBoardBody): Promise<BoardDto>;
@@ -56,10 +61,27 @@ export function createBoardService({
     async create(workspaceId, userId, body) {
       await access.requireRole(workspaceId, userId, 'ADMIN');
 
+      const id = body.id ?? randomUUID();
+
+      if (body.id) {
+        // The client retried an offline create. If it already landed, return it unchanged:
+        // no duplicate board, no second broadcast, no second activity entry.
+        const existing = await repository.findWithCount(body.id);
+
+        if (existing) {
+          if (existing.board.workspaceId === workspaceId && !existing.board.deletedAt) {
+            return { board: toBoardDto(existing.board, existing.taskCount), created: false };
+          }
+
+          // A board in another workspace, or one deleted since: returning it would leak
+          // data or revive a deletion. A 404 here would read as "workspace gone".
+          throw new ValidationError('This id is already in use', { id: 'ID_TAKEN' });
+        }
+      }
+
       const now = clock.now();
       // FR-BRD-1: appended to the end. The first board lands on 1000.
       const position = appendPosition(await repository.maxPosition(workspaceId));
-      const id = randomUUID();
 
       await repository.create({
         id,
@@ -87,7 +109,7 @@ export function createBoardService({
         payload: dto,
       });
 
-      return dto;
+      return { board: dto, created: true };
     },
 
     async list(workspaceId, userId, includeArchived) {

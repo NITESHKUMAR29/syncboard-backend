@@ -57,14 +57,17 @@ export const boardRoutes: FastifyPluginAsyncZod<BoardRoutesOptions> = async (app
         ...auth.schema,
         tags: ['boards'],
         summary: 'Create a board',
+        description:
+          'Accepts a client-generated id. Repeating a create with the same id returns 200 and the existing board instead of a duplicate.',
         params: workspaceIdParamsSchema,
         body: createBoardBodySchema,
-        response: { 201: boardSchema },
+        response: { 200: boardSchema, 201: boardSchema },
       },
     },
     async (request, reply) => {
-      const board = await service.create(request.params.id, requireUserId(request), request.body);
-      return reply.status(201).send(board);
+      const result = await service.create(request.params.id, requireUserId(request), request.body);
+
+      return reply.status(result.created ? 201 : 200).send(result.board);
     },
   );
 

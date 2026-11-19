@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildTestApp, type TestApp } from '../helpers/app.js';
 import { createBoard, createTask, createWorkspaceFixture } from '../helpers/workspace.js';
@@ -48,6 +49,99 @@ describe('POST /workspaces/{id}/boards', () => {
     });
 
     expect(response.json()).toMatchObject({ version: 1, taskCount: 0, archived: false });
+  });
+
+  it('keeps a client-generated id', async () => {
+    const fixture = await createWorkspaceFixture(app());
+    const clientId = randomUUID();
+
+    const response = await app().inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${fixture.id}/boards`,
+      headers: fixture.admin.auth,
+      payload: { id: clientId, title: 'Made offline' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json<{ id: string }>().id).toBe(clientId);
+  });
+
+  it('returns 200 and the stored board when an offline create is retried', async () => {
+    const fixture = await createWorkspaceFixture(app());
+    const clientId = randomUUID();
+    const request = (title: string) =>
+      app().inject({
+        method: 'POST',
+        url: `/api/v1/workspaces/${fixture.id}/boards`,
+        headers: fixture.admin.auth,
+        payload: { id: clientId, title },
+      });
+
+    const first = await request('Original');
+    const retry = await request('Different title');
+
+    expect(first.statusCode).toBe(201);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toMatchObject({ id: clientId, title: 'Original', version: 1 });
+
+    // And there is exactly one board, not two.
+    const list = await app().inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${fixture.id}/boards`,
+      headers: fixture.admin.auth,
+    });
+    expect(list.json<unknown[]>()).toHaveLength(1);
+  });
+
+  it('rejects an id used in another workspace with fields.id = ID_TAKEN', async () => {
+    const mine = await createWorkspaceFixture(app());
+    const theirs = await createWorkspaceFixture(app());
+    const clientId = randomUUID();
+
+    await app().inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${theirs.id}/boards`,
+      headers: theirs.owner.auth,
+      payload: { id: clientId, title: 'Theirs' },
+    });
+
+    const response = await app().inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${mine.id}/boards`,
+      headers: mine.owner.auth,
+      payload: { id: clientId, title: 'Mine' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { fields: Record<string, string> } }>().error.fields).toEqual({
+      id: 'ID_TAKEN',
+    });
+  });
+
+  it('does not revive a deleted board when its create is retried', async () => {
+    const fixture = await createWorkspaceFixture(app());
+    const clientId = randomUUID();
+    const create = () =>
+      app().inject({
+        method: 'POST',
+        url: `/api/v1/workspaces/${fixture.id}/boards`,
+        headers: fixture.admin.auth,
+        payload: { id: clientId, title: 'Short-lived' },
+      });
+
+    await create();
+    await app().inject({
+      method: 'DELETE',
+      url: `/api/v1/boards/${clientId}`,
+      headers: fixture.owner.auth,
+    });
+
+    const retry = await create();
+
+    expect(retry.statusCode).toBe(400);
+    expect(retry.json<{ error: { fields: Record<string, string> } }>().error.fields).toEqual({
+      id: 'ID_TAKEN',
+    });
   });
 
   it('denies a MEMBER (A9: board creation is ADMIN and above)', async () => {
